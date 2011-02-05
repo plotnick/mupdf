@@ -6,14 +6,14 @@ OS := $(OS:MINGW%=MINGW)
 CFLAGS += -Wall
 
 ifeq "$(build)" "debug"
-CFLAGS += -pipe -g -FPIC
+CFLAGS += -pipe -g -fPIC
 else ifeq "$(build)" "profile"
-CFLAGS += -pipe -O2 -DNDEBUG -pg -FPIC
+CFLAGS += -pipe -O2 -DNDEBUG -pg -fPIC
 LDFLAGS += -pg
 else ifeq "$(build)" "release"
-CFLAGS += -pipe -O2 -DNDEBUG -fomit-frame-pointer -FPIC
+CFLAGS += -pipe -O2 -DNDEBUG -fomit-frame-pointer -fPIC
 else ifeq "$(build)" "native"
-CFLAGS += -pipe -O2 -DNDEBUG -fomit-frame-pointer -march=native -mfpmath=sse -FPIC
+CFLAGS += -pipe -O2 -DNDEBUG -fomit-frame-pointer -march=native -mfpmath=sse -fPIC
 else
 $(error unknown build setting: '$(build)')
 endif
