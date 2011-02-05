@@ -254,7 +254,7 @@ static fz_matrix pdfapp_viewctm(pdfapp_t *app)
 	return ctm;
 }
 
-static void pdfapp_panview(pdfapp_t *app, int newx, int newy)
+static void pdfapp_panview(pdfapp_t *app, int newx, int newy, int repaint)
 {
 	if (newx > 0)
 		newx = 0;
@@ -272,7 +272,8 @@ static void pdfapp_panview(pdfapp_t *app, int newx, int newy)
 		newy = (app->winh - app->image->h) / 2;
 
 	if (newx != app->panx || newy != app->pany)
-		winrepaint(app);
+		if (repaint)
+			winrepaint(app);
 
 	app->panx = newx;
 	app->pany = newy;
@@ -402,7 +403,7 @@ static void pdfapp_showpage(pdfapp_t *app, int loadpage, int drawpage, int repai
 
 	if (repaint)
 	{
-		pdfapp_panview(app, app->panx, app->pany);
+		pdfapp_panview(app, app->panx, app->pany, 0);
 
 		if (app->shrinkwrap)
 		{
@@ -661,7 +662,7 @@ void pdfapp_onresize(pdfapp_t *app, int w, int h)
 	{
 		app->winw = w;
 		app->winh = h;
-		pdfapp_panview(app, app->panx, app->pany);
+		pdfapp_panview(app, app->panx, app->pany, 0);
 		winrepaint(app);
 	}
 }
@@ -1029,7 +1030,7 @@ void pdfapp_onmouse(pdfapp_t *app, int x, int y, int btn, int modifiers, int sta
 				int isx = (modifiers & (1<<0));
 				int xstep = isx ? 20 * dir : 0;
 				int ystep = !isx ? 20 * dir : 0;
-				pdfapp_panview(app, app->panx + xstep, app->pany + ystep);
+				pdfapp_panview(app, app->panx + xstep, app->pany + ystep, 1);
 			}
 		}
 	}
@@ -1102,7 +1103,7 @@ void pdfapp_onmouse(pdfapp_t *app, int x, int y, int btn, int modifiers, int sta
 		 * y-direction, the x-direction has not yet been taken
 		 * care off. Therefore
 		 */
-		pdfapp_panview(app, newx, newy);
+		pdfapp_panview(app, newx, newy, 1);
 
 		app->selx = x;
 		app->sely = y;
