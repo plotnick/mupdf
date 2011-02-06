@@ -23,8 +23,9 @@ extern void ximage_blit(Drawable d, GC gc, int dstx, int dsty,
 
 #define PLUGIN_NAME "MuPDF Plugin"
 #define PLUGIN_VERSION "0.0.1"
-#define PLUGIN_DESCRIPTION \
-        "A lightweight PDF viewer from Artifex Software, Inc."
+#define PLUGIN_DESCRIPTION "A plugin based on " \
+    "<a href=\"http://mupdf.com/\">MuPDF</a>, a lightweight PDF toolkit from " \
+    "<a href=\"http://www.artifex.com/\">Artifex Software, Inc.</a>"
 
 static NPNetscapeFuncs npn;
 static Atom XA_TARGETS;
