@@ -62,6 +62,11 @@ void winerror(pdfapp_t *app, fz_error error)
     npn->status(moz->instance, "mupdf error");
 }
 
+void winpassword(pdfapp_t *app, char *filename)
+{
+    return "";
+}
+
 void wintitle(pdfapp_t *app, char *s)
 {
     pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
