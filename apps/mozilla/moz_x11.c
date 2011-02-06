@@ -587,7 +587,7 @@ NPP_GetValue(NPP instance, NPPVariable variable, void *value)
 NPError
 NPP_SetValue(NPP instance, NPNVariable variable, void *value)
 {
-    return NPERR_NO_ERROR;
+    return NPERR_GENERIC_ERROR;
 }
 
 void
