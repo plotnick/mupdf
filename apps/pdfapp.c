@@ -22,7 +22,7 @@ static void pdfapp_warn(pdfapp_t *app, const char *fmt, ...)
 	char buf[1024];
 	va_list ap;
 	va_start(ap, fmt);
-	vsprintf(buf, fmt, ap);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 	winwarn(app, buf);
 }
