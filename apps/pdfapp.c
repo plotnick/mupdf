@@ -603,7 +603,7 @@ static void pdfapp_searchforward(pdfapp_t *app)
 	} while (app->pageno != startpage);
 
 	if (app->pageno == startpage)
-		printf("hit not found\n");
+		pdfapp_warn(app, "No match found: \"%s\"", app->search);
 
 	wincursor(app, HAND);
 }
@@ -651,7 +651,7 @@ static void pdfapp_searchbackward(pdfapp_t *app)
 	} while (app->pageno != startpage);
 
 	if (app->pageno == startpage)
-		printf("hit not found\n");
+		pdfapp_warn(app, "No match found: \"%s\"", app->search);
 
 	wincursor(app, HAND);
 }
