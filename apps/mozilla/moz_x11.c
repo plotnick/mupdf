@@ -26,8 +26,6 @@ extern void ximage_blit(Drawable d, GC gc, int dstx, int dsty,
 #define PLUGIN_DESCRIPTION \
         "A lightweight PDF viewer from Artifex Software, Inc."
 
-#define DEBUG(FORMAT, ...) fprintf(stderr, FORMAT "\n", ##__VA_ARGS__)
-
 static NPNetscapeFuncs npn;
 static Atom XA_TARGETS;
 static Atom XA_TIMESTAMP;
@@ -649,4 +647,5 @@ NP_GetValue(void *future, NPPVariable variable, void *value)
 NP_EXPORT(NPError)
 NP_Shutdown(void)
 {
+    return NPERR_NO_ERROR;
 }
