@@ -76,6 +76,7 @@ void wintitle(pdfapp_t *app, char *s)
 
 void winhelp(pdfapp_t *app)
 {
+    winopenuri(app, "http://mupdf.com/");
 }
 
 void winclose(pdfapp_t *app)
@@ -296,7 +297,7 @@ void winopenuri(pdfapp_t *app, char *buf)
 {
     pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
 
-    npn->geturl(moz->instance, buf, "_top");
+    npn->geturl(moz->instance, buf, "_blank");
 }
 
 static void
