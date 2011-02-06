@@ -604,14 +604,15 @@ NP_Initialize(NPNetscapeFuncs *npn_funcs, NPPluginFuncs *npp_funcs)
         return NPERR_INVALID_FUNCTABLE_ERROR;
 
     /* The navigator functions table may have a size different from what
-       we were compiled with. That's fine, as long as it contains the
-       few functions we use. */
+       we were compiled with. That's fine, as long as it contains (at least)
+       the few functions we use. */
     size = MIN(sizeof(npn), npn_funcs->size);
     memcpy(&npn, npn_funcs, size);
     npn.size = size;
     if (!npn.geturl || !npn.status)
         return NPERR_INVALID_FUNCTABLE_ERROR;
 
+    /* Now fill in the plugin functions table. */
     npp_funcs->newp = NPP_New;
     npp_funcs->destroy = NPP_Destroy;
     npp_funcs->setwindow = NPP_SetWindow;
