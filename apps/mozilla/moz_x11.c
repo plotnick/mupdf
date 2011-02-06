@@ -21,8 +21,8 @@ extern void ximage_blit(Drawable d, GC gc, int dstx, int dsty,
 	unsigned char *srcdata,
 	int srcx, int srcy, int srcw, int srch, int srcstride);
 
-#define PLUGIN_NAME "muPDF Plug-in"
-#define PLUGIN_VERSION "0.0.0"
+#define PLUGIN_NAME "MuPDF Plug-in"
+#define PLUGIN_VERSION "0.0.1"
 
 #define DEBUG(FORMAT, ...) fprintf(stderr, FORMAT "\n", ##__VA_ARGS__)
 
