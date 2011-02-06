@@ -80,6 +80,7 @@ void winhelp(pdfapp_t *app)
 
 void winclose(pdfapp_t *app)
 {
+    /* No-op; we're not allowed to close the browser window. */
 }
 
 void wincursor(pdfapp_t *app, int cursor)
