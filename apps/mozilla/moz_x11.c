@@ -62,7 +62,7 @@ void winerror(pdfapp_t *app, fz_error error)
     npn->status(moz->instance, "mupdf error");
 }
 
-void winpassword(pdfapp_t *app, char *filename)
+char *winpassword(pdfapp_t *app, char *filename)
 {
     return "";
 }
