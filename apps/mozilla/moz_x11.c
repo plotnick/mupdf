@@ -21,8 +21,10 @@ extern void ximage_blit(Drawable d, GC gc, int dstx, int dsty,
 	unsigned char *srcdata,
 	int srcx, int srcy, int srcw, int srch, int srcstride);
 
-#define PLUGIN_NAME "MuPDF Plug-in"
+#define PLUGIN_NAME "MuPDF Plugin"
 #define PLUGIN_VERSION "0.0.1"
+#define PLUGIN_DESCRIPTION \
+        "A lightweight PDF viewer from Artifex Software, Inc."
 
 #define DEBUG(FORMAT, ...) fprintf(stderr, FORMAT "\n", ##__VA_ARGS__)
 
@@ -567,7 +569,19 @@ NPP_URLNotify(NPP instance, const char* url,
 NPError
 NPP_GetValue(NPP instance, NPPVariable variable, void *value)
 {
-    return NPERR_NO_ERROR;
+    switch (variable)
+    {
+    case NPPVpluginNameString:
+        *((char **) value) = PLUGIN_NAME;
+        return NPERR_NO_ERROR;
+
+    case NPPVpluginDescriptionString:
+        *((char **) value) = PLUGIN_DESCRIPTION;
+        return NPERR_NO_ERROR;
+
+    default:
+        return NPERR_GENERIC_ERROR;
+    }
 }
 
 NPError
@@ -614,4 +628,10 @@ NP_EXPORT(char *)
 NP_GetPluginVersion()
 {
     return PLUGIN_VERSION;
+}
+
+NP_EXPORT(NPError)
+NP_GetValue(void *future, NPPVariable variable, void *value)
+{
+    return NPP_GetValue(future, variable, value);
 }
