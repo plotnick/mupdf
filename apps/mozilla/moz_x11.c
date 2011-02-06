@@ -28,7 +28,7 @@ extern void ximage_blit(Drawable d, GC gc, int dstx, int dsty,
 
 #define DEBUG(FORMAT, ...) fprintf(stderr, FORMAT "\n", ##__VA_ARGS__)
 
-static NPNetscapeFuncs *npn;
+static NPNetscapeFuncs npn;
 static Atom XA_TARGETS;
 static Atom XA_TIMESTAMP;
 static Atom XA_UTF8_STRING;
@@ -53,7 +53,7 @@ void winwarn(pdfapp_t *app, char* msg)
 {
     pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
 
-    npn->status(moz->instance, msg);
+    npn.status(moz->instance, msg);
 }
 
 void winerror(pdfapp_t *app, fz_error error)
@@ -61,7 +61,7 @@ void winerror(pdfapp_t *app, fz_error error)
     pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
 
     fz_catch(error, "unhandled error");
-    npn->status(moz->instance, "mupdf error");
+    npn.status(moz->instance, "mupdf error");
 }
 
 char *winpassword(pdfapp_t *app, char *filename)
@@ -73,7 +73,7 @@ void wintitle(pdfapp_t *app, char *s)
 {
     pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
 
-    npn->status(moz->instance, s);
+    npn.status(moz->instance, s);
 }
 
 void winhelp(pdfapp_t *app)
@@ -121,7 +121,7 @@ static void search_status(pdfapp_t *app)
         char buf[sizeof(label) + strlen(app->search)];
 
         sprintf(buf, "%s%s", label, app->search);
-        npn->status(moz->instance, buf);
+        npn.status(moz->instance, buf);
     }
 }
 
@@ -299,7 +299,7 @@ void winopenuri(pdfapp_t *app, char *buf)
 {
     pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
 
-    npn->geturl(moz->instance, buf, "_blank");
+    npn.geturl(moz->instance, buf, "_blank");
 }
 
 static void
@@ -598,7 +598,19 @@ NPP_Shutdown(void)
 NP_EXPORT(NPError)
 NP_Initialize(NPNetscapeFuncs *npn_funcs, NPPluginFuncs *npp_funcs)
 {
-    npn = npn_funcs;
+    uint16_t size;
+
+    if (!npn_funcs || !npp_funcs)
+        return NPERR_INVALID_FUNCTABLE_ERROR;
+
+    /* The navigator functions table may have a size different from what
+       we were compiled with. That's fine, as long as it contains the
+       few functions we use. */
+    size = MIN(sizeof(npn), npn_funcs->size);
+    memcpy(&npn, npn_funcs, size);
+    npn.size = size;
+    if (!npn.geturl || !npn.status)
+        return NPERR_INVALID_FUNCTABLE_ERROR;
 
     npp_funcs->newp = NPP_New;
     npp_funcs->destroy = NPP_Destroy;
