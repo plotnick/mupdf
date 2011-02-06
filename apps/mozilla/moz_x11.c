@@ -46,7 +46,7 @@ typedef struct
     Time copytime;
     int justcopied;
 } pdfmoz_t;
-
+
 /* pdfapp callbacks */
 
 void winwarn(pdfapp_t *app, char* msg)
@@ -389,7 +389,7 @@ handle_event(Widget widget, pdfapp_t *app, XEvent *event, Boolean *b)
     }
 }
 
-/* NPAPI Interface */
+/* NPAPI plugin functions */
 
 NPError
 NPP_New(NPMIMEType mime, NPP instance, uint16_t mode,
@@ -589,11 +589,8 @@ NPP_SetValue(NPP instance, NPNVariable variable, void *value)
 {
     return NPERR_GENERIC_ERROR;
 }
-
-void
-NPP_Shutdown(void)
-{
-}
+
+/* NPAPI entry points */
 
 NP_EXPORT(NPError)
 NP_Initialize(NPNetscapeFuncs *npn_funcs, NPPluginFuncs *npp_funcs)
@@ -647,4 +644,9 @@ NP_EXPORT(NPError)
 NP_GetValue(void *future, NPPVariable variable, void *value)
 {
     return NPP_GetValue(future, variable, value);
+}
+
+NP_EXPORT(NPError)
+NP_Shutdown(void)
+{
 }
