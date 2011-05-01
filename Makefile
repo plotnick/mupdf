@@ -135,6 +135,14 @@ $(MUPDF) : $(addprefix $(OUT)/, x11_main.o x11_image.o pdfapp.o)
 	$(LINK_CMD) $(X11_LIBS)
 endif
 
+MOZ_PLUGIN := $(OUT)/libmupdfplugin.so
+$(MOZ_PLUGIN) : $(MUXPS_LIB) $(MUPDF_LIB) $(FITZ_LIB) $(THIRD_LIBS)
+$(MOZ_PLUGIN): CFLAGS += $(SYS_NPAPI_CFLAGS)
+ifeq "$(NOX11)" ""
+$(MOZ_PLUGIN) : $(addprefix $(OUT)/, moz_x11.o x11_image.o pdfapp.o)
+	$(LINK_CMD) -shared $(X11_LIBS)
+endif
+
 # --- Install ---
 
 prefix ?= /usr/local
@@ -143,16 +151,16 @@ libdir ?= $(prefix)/lib
 incdir ?= $(prefix)/include
 mandir ?= $(prefix)/share/man
 
-install: $(MUXPS_LIB) $(MUPDF_LIB) $(FITZ_LIB) $(PDF_APPS) $(XPS_APPS) $(MUPDF)
+install: $(MUXPS_LIB) $(MUPDF_LIB) $(FITZ_LIB) $(PDF_APPS) $(XPS_APPS) $(MUPDF) $(MOZ_PLUGIN)
 	install -d $(bindir) $(libdir) $(incdir) $(mandir)/man1
 	install $(MUXPS_LIB) $(MUPDF_LIB) $(FITZ_LIB) $(libdir)
 	install fitz/fitz.h pdf/mupdf.h xps/muxps.h $(incdir)
-	install $(PDF_APPS) $(XPS_APPS) $(MUPDF) $(bindir)
+	install $(PDF_APPS) $(XPS_APPS) $(MUPDF) $(MOZ_PLUGIN) $(bindir)
 	install $(wildcard apps/man/*.1) $(mandir)/man1
 
 # --- Clean and Default ---
 
-all: $(THIRD_LIBS) $(FITZ_LIB) $(PDF_APPS) $(XPS_APPS) $(MUPDF)
+all: $(THIRD_LIBS) $(FITZ_LIB) $(PDF_APPS) $(XPS_APPS) $(MUPDF) $(MOZ_PLUGIN)
 
 clean:
 	rm -rf $(OUT)
