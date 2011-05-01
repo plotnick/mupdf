@@ -6,6 +6,7 @@
 
 #include "fitz.h"
 #include "mupdf.h"
+#include "muxps.h"
 #include "pdfapp.h"
 
 #include "npapi.h"
@@ -453,7 +454,7 @@ NPP_SetWindow(NPP instance, NPWindow *window)
 
 		moz->display = dpy;
 		moz->window = XWindow(window);
-		moz->gc = XCreateGC(dpy, moz->window, 0, nil);
+		moz->gc = XCreateGC(dpy, moz->window, 0, NULL);
 
 		ximage_init(dpy, screen, ws_info->visual);
 
