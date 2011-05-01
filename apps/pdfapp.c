@@ -147,9 +147,9 @@ static void pdfapp_open_pdf(pdfapp_t *app, char *filename, int fd)
 	info = fz_dict_gets(app->xref->trailer, "Info");
 	if (info)
 	{
-		obj = fz_dictgets(info, "Title");
-		if (obj && fz_tostrlen(obj) > 0)
-			app->doctitle = pdf_toutf8(obj);
+		obj = fz_dict_gets(info, "Title");
+		if (obj && fz_to_str_len(obj) > 0)
+			app->doctitle = pdf_to_utf8(obj);
 	}
 
 	/*
