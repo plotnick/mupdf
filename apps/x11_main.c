@@ -1,17 +1,18 @@
-#include "fitz.h"
-#include "mupdf.h"
-#include "muxps.h"
-#include "pdfapp.h"
+#include <sys/select.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
 
-#include <sys/select.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include "fitz.h"
+#include "mupdf.h"
+#include "muxps.h"
+#include "pdfapp.h"
+#include "x11_image.h"
 
 #define mupdf_icon_bitmap_16_width 16
 #define mupdf_icon_bitmap_16_height 16
@@ -52,14 +53,6 @@ static unsigned char mupdf_icon_bitmap_16_mask_bits[] = {
 	} while (0)
 #endif
 
-extern int ximage_init(Display *display, int screen, Visual *visual);
-extern int ximage_get_depth(void);
-extern Visual *ximage_get_visual(void);
-extern Colormap ximage_get_colormap(void);
-extern void ximage_blit(Drawable d, GC gc, int dstx, int dsty,
-	unsigned char *srcdata,
-	int srcx, int srcy, int srcw, int srch, int srcstride);
-
 static Display *xdpy;
 static Atom XA_TARGETS;
 static Atom XA_TIMESTAMP;
@@ -86,6 +79,7 @@ static char copyutf8[1024 * 48] = "";
 static Time copytime;
 static char *filename;
 
+static ximage_info *info;
 static pdfapp_t gapp;
 static int closing = 0;
 
@@ -131,7 +125,7 @@ static void winopen(void)
 
 	xscr = DefaultScreen(xdpy);
 
-	ximage_init(xdpy, xscr, DefaultVisual(xdpy, xscr));
+	info = ximage_init(xdpy, xscr, DefaultVisual(xdpy, xscr));
 
 	xcarrow = XCreateFontCursor(xdpy, XC_left_ptr);
 	xchand = XCreateFontCursor(xdpy, XC_hand2);
@@ -150,15 +144,15 @@ static void winopen(void)
 
 	xwin = XCreateWindow(xdpy, DefaultRootWindow(xdpy),
 		10, 10, 200, 100, 1,
-		ximage_get_depth(),
+		ximage_get_depth(info),
 		InputOutput,
-		ximage_get_visual(),
+		ximage_get_visual(info),
 		0,
 		NULL);
 	if (xwin == None)
 		winerror(&gapp, fz_throw("cannot create window"));
 
-	XSetWindowColormap(xdpy, xwin, ximage_get_colormap());
+	XSetWindowColormap(xdpy, xwin, ximage_get_colormap(info));
 	XSelectInput(xdpy, xwin,
 		StructureNotifyMask | ExposureMask | KeyPressMask |
 		PointerMotionMask | ButtonPressMask | ButtonReleaseMask);
@@ -303,7 +297,8 @@ static void winblit(pdfapp_t *app)
 	pdfapp_inverthit(&gapp);
 
 	if (gapp.image->n == 4)
-		ximage_blit(xwin, xgc,
+		ximage_blit(info,
+			xwin, xgc,
 			x0, y0,
 			gapp.image->samples,
 			0, 0,
@@ -324,7 +319,8 @@ static void winblit(pdfapp_t *app)
 				d[3] = *s++;
 				d += 4;
 			}
-			ximage_blit(xwin, xgc,
+			ximage_blit(info,
+				xwin, xgc,
 				x0, y0,
 				color,
 				0, 0,
@@ -762,6 +758,8 @@ int main(int argc, char **argv)
 			}
 		}
 	}
+
+	ximage_free_info(info);
 
 	pdfapp_close(&gapp);
 

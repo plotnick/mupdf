@@ -8,14 +8,10 @@
 #include "mupdf.h"
 #include "muxps.h"
 #include "pdfapp.h"
+#include "x11_image.h"
 
 #include "npapi.h"
 #include "npfunctions.h"
-
-extern int ximage_init(Display *display, int screen, Visual *visual);
-extern void ximage_blit(Drawable d, GC gc, int dstx, int dsty,
-	unsigned char *srcdata,
-	int srcx, int srcy, int srcw, int srch, int srcstride);
 
 #define PLUGIN_NAME "MuPDF Plugin"
 #define PLUGIN_VERSION "0.0.1"
@@ -40,6 +36,7 @@ typedef struct
 	char copyutf8[1024*48];
 	Time copytime;
 	int justcopied;
+	ximage_info *info;
 } pdfmoz_t;
 
 /* pdfapp callbacks */
@@ -158,7 +155,8 @@ void winrepaint(pdfapp_t *app)
 	pdfapp_inverthit(app);
 
 	if (app->image->n == 4)
-		ximage_blit(window, gc,
+		ximage_blit(moz->info,
+					window, gc,
 					x0, y0,
 					app->image->samples,
 					0, 0,
@@ -179,7 +177,8 @@ void winrepaint(pdfapp_t *app)
 				d[3] = *s++;
 				d += 4;
 			}
-			ximage_blit(window, gc,
+			ximage_blit(moz->info,
+						window, gc,
 						x0, y0,
 						color,
 						0, 0,
@@ -417,6 +416,9 @@ NPP_Destroy(NPP instance, NPSavedData **saved)
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
 	Display *dpy = moz->display;
 
+	ximage_free_info(moz->info);
+	moz->info = NULL;
+
 	XFreeCursor(dpy, moz->xcarrow);
 	XFreeCursor(dpy, moz->xchand);
 	XFreeCursor(dpy, moz->xcwait);
@@ -455,8 +457,7 @@ NPP_SetWindow(NPP instance, NPWindow *window)
 		moz->display = dpy;
 		moz->window = XWindow(window);
 		moz->gc = XCreateGC(dpy, moz->window, 0, NULL);
-
-		ximage_init(dpy, screen, ws_info->visual);
+		moz->info = ximage_init(dpy, screen, ws_info->visual);
 
 		if (moz->xcarrow != None) XFreeCursor(dpy, moz->xcarrow);
 		if (moz->xchand != None) XFreeCursor(dpy, moz->xchand);
