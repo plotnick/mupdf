@@ -540,7 +540,7 @@ NPP_StreamAsFile(NPP instance, NPStream* stream, const char* filename)
 	if (fd < 0)
 		winwarn(app, "cannot open file");
 	app->pageno = 1;
-	pdfapp_open(app, (char *) filename, fd);
+	pdfapp_open(app, (char *) filename, fd, 0);
 }
 
 void
