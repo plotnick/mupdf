@@ -575,6 +575,10 @@ NPP_GetValue(NPP instance, NPPVariable variable, void *value)
 		*((char **) value) = PLUGIN_DESCRIPTION;
 		return NPERR_NO_ERROR;
 
+	case NPPVpluginNeedsXEmbed:
+		*((bool *) value) = true;
+		return NPERR_NO_ERROR;
+
 	default:
 		return NPERR_GENERIC_ERROR;
 	}
@@ -592,6 +596,9 @@ NP_EXPORT(NPError)
 NP_Initialize(NPNetscapeFuncs *npn_funcs, NPPluginFuncs *npp_funcs)
 {
 	uint16_t size;
+	NPError err;
+	bool supports_xembed;
+	NPNToolkitType toolkit;
 
 	if (!npn_funcs || !npp_funcs)
 		return NPERR_INVALID_FUNCTABLE_ERROR;
@@ -602,8 +609,16 @@ NP_Initialize(NPNetscapeFuncs *npn_funcs, NPPluginFuncs *npp_funcs)
 	size = MIN(sizeof(npn), npn_funcs->size);
 	memcpy(&npn, npn_funcs, size);
 	npn.size = size;
-	if (!npn.geturl || !npn.status)
+	if (!npn.geturl || !npn.status || !npn.getvalue)
 		return NPERR_INVALID_FUNCTABLE_ERROR;
+
+	/* Ensure that the browser supports XEmbed and uses Gtk2. */
+	err = npn.getvalue(NULL, NPNVSupportsXEmbedBool, &supports_xembed);
+	if (err != NPERR_NO_ERROR || !supports_xembed)
+		return NPERR_INCOMPATIBLE_VERSION_ERROR;
+	err = npn.getvalue(NULL, NPNVToolkit, &toolkit);
+	if (err != NPERR_NO_ERROR || toolkit != NPNVGtk2)
+		return NPERR_INCOMPATIBLE_VERSION_ERROR;
 
 	/* Now fill in the plugin functions table. */
 	npp_funcs->newp = NPP_New;
