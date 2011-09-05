@@ -12,13 +12,29 @@
 
 #define noSHOWINFO
 
+#include "fitz.h"
+
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-
-#include "fitz.h"
-#include "x11_image.h"
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <X11/extensions/XShm.h>
 
 extern int ffs(int);
+
+typedef void (*ximage_convert_func_t)
+(
+	const unsigned char *src,
+	int srcstride,
+	unsigned char *dst,
+	int dststride,
+	int w,
+	int h
+	);
+
+#define POOLSIZE 4
+#define WIDTH 256
+#define HEIGHT 256
 
 enum {
 	ARGB8888,
@@ -54,15 +70,38 @@ static char *modename[] = {
 
 extern ximage_convert_func_t ximage_convert_funcs[];
 
+static struct
+{
+	Display *display;
+	int screen;
+	XVisualInfo visual;
+	Colormap colormap;
+
+	int bitsperpixel;
+	int mode;
+
+	XColor rgbcube[256];
+
+	ximage_convert_func_t convert_func;
+
+	int useshm;
+	int shmcode;
+	XImage *pool[POOLSIZE];
+	/* MUST exist during the lifetime of the shared ximage according to the
+	xc/doc/hardcopy/Xext/mit-shm.PS.gz */
+	XShmSegmentInfo shminfo[POOLSIZE];
+	int lastused;
+} info;
+
 static XImage *
-createximage(Display *dpy, Visual *vis, XShmSegmentInfo *xsi, int depth, int w, int h, int useshm)
+createximage(Display *dpy, Visual *vis, XShmSegmentInfo *xsi, int depth, int w, int h)
 {
 	XImage *img;
 	Status status;
 
 	if (!XShmQueryExtension(dpy))
 		goto fallback;
-	if (!useshm)
+	if (!info.useshm)
 		goto fallback;
 
 	img = XShmCreateImage(dpy, vis, depth, ZPixmap, NULL, xsi, w, h);
@@ -107,6 +146,8 @@ createximage(Display *dpy, Visual *vis, XShmSegmentInfo *xsi, int depth, int w, 
 	return img;
 
 fallback:
+	info.useshm = 0;
+
 	img = XCreateImage(dpy, vis, depth, ZPixmap, 0, NULL, w, h, 32, 0);
 	if (!img)
 	{
@@ -125,71 +166,60 @@ fallback:
 }
 
 static void
-destroyximage(Display *dpy, XImage *img, XShmSegmentInfo *xsi, int useshm)
+make_colormap(void)
 {
-	if (useshm) {
-		XShmDetach(dpy, xsi);
-		shmdt(xsi->shmaddr);
-	} else {
-		free(img->data);
-	}
-	XDestroyImage(img);
-}
-
-static void
-make_colormap(ximage_info *info)
-{
-	if (info->visual.class == PseudoColor && info->visual.depth == 8)
+	if (info.visual.class == PseudoColor && info.visual.depth == 8)
 	{
 		int i, r, g, b;
 		i = 0;
 		for (b = 0; b < 4; b++) {
 			for (g = 0; g < 8; g++) {
 				for (r = 0; r < 8; r++) {
-					info->rgbcube[i].pixel = i;
-					info->rgbcube[i].red = (r * 36) << 8;
-					info->rgbcube[i].green = (g * 36) << 8;
-					info->rgbcube[i].blue = (b * 85) << 8;
-					info->rgbcube[i].flags =
+					info.rgbcube[i].pixel = i;
+					info.rgbcube[i].red = (r * 36) << 8;
+					info.rgbcube[i].green = (g * 36) << 8;
+					info.rgbcube[i].blue = (b * 85) << 8;
+					info.rgbcube[i].flags =
 					DoRed | DoGreen | DoBlue;
 					i++;
 				}
 			}
 		}
-		info->colormap = XCreateColormap(info->display,
-			RootWindow(info->display, info->screen),
-			info->visual.visual,
+		info.colormap = XCreateColormap(info.display,
+			RootWindow(info.display, info.screen),
+			info.visual.visual,
 			AllocAll);
-		XStoreColors(info->display, info->colormap, info->rgbcube, 256);
+		XStoreColors(info.display, info.colormap, info.rgbcube, 256);
 		return;
 	}
-	else if (info->visual.class == TrueColor)
+	else if (info.visual.class == TrueColor)
 	{
-		info->colormap = 0;
+		info.colormap = 0;
 		return;
 	}
 	fprintf(stderr, "Cannot handle visual class %d with depth: %d\n",
-		info->visual.class, info->visual.depth);
+		info.visual.class, info.visual.depth);
 	return;
 }
 
 static void
-select_mode(ximage_info *info)
+select_mode(void)
 {
+
 	int byteorder;
 	int byterev;
 	unsigned long rm, gm, bm;
 	unsigned long rs, gs, bs;
 
-	byteorder = ImageByteOrder(info->display);
+	byteorder = ImageByteOrder(info.display);
 	if (fz_is_big_endian())
 		byterev = byteorder != MSBFirst;
 	else
 		byterev = byteorder != LSBFirst;
 
-	rm = info->visual.red_mask;
-	gm = info->visual.green_mask;
-	bm = info->visual.blue_mask;
+	rm = info.visual.red_mask;
+	gm = info.visual.green_mask;
+	bm = info.visual.blue_mask;
 
 	rs = ffs(rm) - 1;
 	gs = ffs(gm) - 1;
@@ -197,65 +227,65 @@ select_mode(ximage_info *info)
 
 #ifdef SHOWINFO
 	printf("ximage: mode %d/%d %08lx %08lx %08lx (%ld,%ld,%ld) %s%s\n",
-		info->visual.depth,
-		info->bitsperpixel,
+		info.visual.depth,
+		info.bitsperpixel,
 		rm, gm, bm, rs, gs, bs,
 		byteorder == MSBFirst ? "msb" : "lsb",
 		byterev ? " <swap>":"");
 #endif
 
-	info->mode = UNKNOWN;
-	if (info->bitsperpixel == 8) {
+	info.mode = UNKNOWN;
+	if (info.bitsperpixel == 8) {
 		/* Either PseudoColor with BGR233 colormap, or TrueColor */
-		info->mode = BGR233;
+		info.mode = BGR233;
 	}
-	else if (info->bitsperpixel == 16) {
+	else if (info.bitsperpixel == 16) {
 		if (rm == 0xF800 && gm == 0x07E0 && bm == 0x001F)
-			info->mode = !byterev ? RGB565 : RGB565_BR;
+			info.mode = !byterev ? RGB565 : RGB565_BR;
 		if (rm == 0x7C00 && gm == 0x03E0 && bm == 0x001F)
-			info->mode = !byterev ? RGB555 : RGB555_BR;
+			info.mode = !byterev ? RGB555 : RGB555_BR;
 	}
-	else if (info->bitsperpixel == 24) {
+	else if (info.bitsperpixel == 24) {
 		if (rs == 0 && gs == 8 && bs == 16)
-			info->mode = byteorder == MSBFirst ? RGB888 : BGR888;
+			info.mode = byteorder == MSBFirst ? RGB888 : BGR888;
 		if (rs == 16 && gs == 8 && bs == 0)
-			info->mode = byteorder == MSBFirst ? BGR888 : RGB888;
+			info.mode = byteorder == MSBFirst ? BGR888 : RGB888;
 	}
-	else if (info->bitsperpixel == 32) {
+	else if (info.bitsperpixel == 32) {
 		if (rs == 0 && gs == 8 && bs == 16)
-			info->mode = byteorder == MSBFirst ? ABGR8888 : RGBA8888;
+			info.mode = byteorder == MSBFirst ? ABGR8888 : RGBA8888;
 		if (rs == 8 && gs == 16 && bs == 24)
-			info->mode = byteorder == MSBFirst ? BGRA8888 : ARGB8888;
+			info.mode = byteorder == MSBFirst ? BGRA8888 : ARGB8888;
 		if (rs == 16 && gs == 8 && bs == 0)
-			info->mode = byteorder == MSBFirst ? ARGB8888 : BGRA8888;
+			info.mode = byteorder == MSBFirst ? ARGB8888 : BGRA8888;
 		if (rs == 24 && gs == 16 && bs == 8)
-			info->mode = byteorder == MSBFirst ? RGBA8888 : ABGR8888;
+			info.mode = byteorder == MSBFirst ? RGBA8888 : ABGR8888;
 	}
 
 #ifdef SHOWINFO
-	printf("ximage: RGBA8888 to %s\n", modename[info->mode]);
+	printf("ximage: RGBA8888 to %s\n", modename[info.mode]);
 #endif
 
 	/* select conversion function */
-	info->convert_func = ximage_convert_funcs[info->mode];
+	info.convert_func = ximage_convert_funcs[info.mode];
 }
 
 static int
-create_pool(ximage_info *info)
+create_pool(void)
 {
 	int i;
 
-	info->lastused = 0;
+	info.lastused = 0;
 
 	for (i = 0; i < POOLSIZE; i++) {
-		info->pool[i] = NULL;
+		info.pool[i] = NULL;
 	}
 
 	for (i = 0; i < POOLSIZE; i++) {
-		info->pool[i] = createximage(info->display,
-			info->visual.visual, &info->shminfo[i], info->visual.depth,
-			WIDTH, HEIGHT, info->useshm);
-		if (info->pool[i] == NULL) {
+		info.pool[i] = createximage(info.display,
+			info.visual.visual, &info.shminfo[i], info.visual.depth,
+			WIDTH, HEIGHT);
+		if (info.pool[i] == NULL) {
 			return 0;
 		}
 	}
@@ -263,35 +293,39 @@ create_pool(ximage_info *info)
 	return 1;
 }
 
-static void
-free_pool(ximage_info *info)
-{
-	int i;
-
-	for (i = 0; i < POOLSIZE; i++) {
-		destroyximage(info->display, info->pool[i],
-			&info->shminfo[i], info->useshm);
-		info->pool[i] = NULL;
-	}
-}
-
 static XImage *
-next_pool_image(ximage_info *info)
+next_pool_image(void)
 {
-	if (info->lastused + 1 >= POOLSIZE) {
-		if (info->useshm)
-			XSync(info->display, False);
+	if (info.lastused + 1 >= POOLSIZE) {
+		if (info.useshm)
+			XSync(info.display, False);
 		else
-			XFlush(info->display);
-		info->lastused = 0;
+			XFlush(info.display);
+		info.lastused = 0;
 	}
-	return info->pool[info->lastused ++];
+	return info.pool[info.lastused ++];
 }
 
-ximage_info *
+static int
+ximage_error_handler(Display *display, XErrorEvent *event)
+{
+	/* Turn off shared memory images if we get an error from the MIT-SHM extension */
+	if (event->request_code == info.shmcode)
+	{
+		char buf[80];
+		XGetErrorText(display, event->error_code, buf, sizeof buf);
+		fprintf(stderr, "ximage: disabling shared memory extension: %s\n", buf);
+		info.useshm = 0;
+		return 0;
+	}
+
+	XSetErrorHandler(NULL);
+	return (XSetErrorHandler(ximage_error_handler))(display, event);
+}
+
+int
 ximage_init(Display *display, int screen, Visual *visual)
 {
-	ximage_info *info;
 	XVisualInfo template;
 	XVisualInfo *visuals;
 	int nvisuals;
@@ -303,15 +337,9 @@ ximage_init(Display *display, int screen, Visual *visual)
 	int event;
 	int error;
 
-	info = malloc(sizeof (ximage_info));
-	if (!info) {
-		fprintf(stderr, "fail: could not malloc ximage info");
-		abort();
-	}
-
-	info->display = display;
-	info->screen = screen;
-	info->colormap = 0;
+	info.display = display;
+	info.screen = screen;
+	info.colormap = 0;
 
 	/* Get XVisualInfo for this visual */
 	template.visualid = XVisualIDFromVisual(visual);
@@ -319,84 +347,72 @@ ximage_init(Display *display, int screen, Visual *visual)
 	if (nvisuals != 1) {
 		fprintf(stderr, "Visual not found!\n");
 		XFree(visuals);
-		goto fail;
+		return 0;
 	}
-	memcpy(&info->visual, visuals, sizeof (XVisualInfo));
+	memcpy(&info.visual, visuals, sizeof (XVisualInfo));
 	XFree(visuals);
 
 	/* Get appropriate PixmapFormat for this visual */
-	formats = XListPixmapFormats(info->display, &nformats);
+	formats = XListPixmapFormats(info.display, &nformats);
 	for (i = 0; i < nformats; i++) {
-		if (formats[i].depth == info->visual.depth) {
-			info->bitsperpixel = formats[i].bits_per_pixel;
+		if (formats[i].depth == info.visual.depth) {
+			info.bitsperpixel = formats[i].bits_per_pixel;
 			break;
 		}
 	}
 	XFree(formats);
 	if (i == nformats) {
 		fprintf(stderr, "PixmapFormat not found!\n");
-		goto fail;
+		return 0;
 	}
 
 	/* extract mode */
-	select_mode(info);
+	select_mode();
 
 	/* prepare colormap */
-	make_colormap(info);
+	make_colormap();
 
 	/* identify code for MIT-SHM extension */
 	if (XQueryExtension(display, "MIT-SHM", &major, &event, &error) &&
-		XShmQueryExtension(display)) {
-		info->shmcode = major;
-		info->useshm = 1;
-	}
+		XShmQueryExtension(display))
+		info.shmcode = major;
+
+	/* intercept errors looking for SHM code */
+	XSetErrorHandler(ximage_error_handler);
 
 	/* prepare pool of XImages */
-	ok = create_pool(info);
+	info.useshm = 1;
+	ok = create_pool();
 	if (!ok)
-		goto fail;
+		return 0;
 
 #ifdef SHOWINFO
-	printf("ximage: %sPutImage\n", info->useshm ? "XShm" : "X");
+	printf("ximage: %sPutImage\n", info.useshm ? "XShm" : "X");
 #endif
 
-	return info;
-
-fail:
-	free(info);
-	return NULL;
-}
-
-void
-ximage_free_info(ximage_info *info)
-{
-	if (info->colormap)
-		XFreeColormap(info->display, info->colormap);
-	free_pool(info);
-	free(info);
+	return 1;
 }
 
 int
-ximage_get_depth(ximage_info *info)
+ximage_get_depth(void)
 {
-	return info->visual.depth;
+	return info.visual.depth;
 }
 
 Visual *
-ximage_get_visual(ximage_info *info)
+ximage_get_visual(void)
 {
-	return info->visual.visual;
+	return info.visual.visual;
 }
 
 Colormap
-ximage_get_colormap(ximage_info *info)
+ximage_get_colormap(void)
 {
-	return info->colormap;
+	return info.colormap;
 }
 
 void
-ximage_blit(ximage_info *info,
-	Drawable d, GC gc,
+ximage_blit(Drawable d, GC gc,
 	int dstx, int dsty,
 	unsigned char *srcdata,
 	int srcx, int srcy,
@@ -415,25 +431,25 @@ ximage_blit(ximage_info *info,
 		{
 			w = MIN(srcw - ax, WIDTH);
 
-			image = next_pool_image(info);
+			image = next_pool_image();
 
 			srcptr = srcdata +
 			(ay + srcy) * srcstride +
 			(ax + srcx) * 4;
 
-			info->convert_func(srcptr, srcstride,
+			info.convert_func(srcptr, srcstride,
 				(unsigned char *) image->data,
 				image->bytes_per_line, w, h);
 
-			if (info->useshm)
+			if (info.useshm)
 			{
-				XShmPutImage(info->display, d, gc, image,
+				XShmPutImage(info.display, d, gc, image,
 					0, 0, dstx + ax, dsty + ay,
 					w, h, False);
 			}
 			else
 			{
-				XPutImage(info->display, d, gc, image,
+				XPutImage(info.display, d, gc, image,
 					0, 0,
 					dstx + ax,
 					dsty + ay,

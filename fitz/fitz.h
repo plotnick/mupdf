@@ -20,21 +20,10 @@
 
 #define nelem(x) (sizeof(x)/sizeof((x)[0]))
 
-#ifndef ABS
 #define ABS(x) ( (x) < 0 ? -(x) : (x) )
-#endif
-
-#ifndef MIN
 #define MIN(a,b) ( (a) < (b) ? (a) : (b) )
-#endif
-
-#ifndef MAX
 #define MAX(a,b) ( (a) > (b) ? (a) : (b) )
-#endif
-
-#ifndef CLAMP
 #define CLAMP(x,a,b) ( (x) > (b) ? (b) : ( (x) < (a) ? (a) : (x) ) )
-#endif
 
 /*
  * Some differences in libc can be smoothed over

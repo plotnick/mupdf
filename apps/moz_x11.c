@@ -1,14 +1,14 @@
-#include <gtk/gtk.h>
-#include <gdk/gdkx.h>
-#include <gdk/gdkkeysyms.h>
-
 #include "fitz.h"
 #include "mupdf.h"
 #include "muxps.h"
 #include "pdfapp.h"
 
-#include "npapi.h"
-#include "npfunctions.h"
+#include <gtk/gtk.h>
+#include <gdk/gdkx.h>
+#include <gdk/gdkkeysyms.h>
+
+#include <npapi.h>
+#include <npfunctions.h>
 
 #define PLUGIN_NAME "MuPDF Plugin"
 #define PLUGIN_VERSION "0.0.2"
