@@ -1,42 +1,33 @@
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <X11/Xatom.h>
-#include <X11/cursorfont.h>
-#include <X11/Intrinsic.h>
+#include <gtk/gtk.h>
+#include <gdk/gdkx.h>
+#include <gdk/gdkkeysyms.h>
 
 #include "fitz.h"
 #include "mupdf.h"
 #include "muxps.h"
 #include "pdfapp.h"
-#include "x11_image.h"
 
 #include "npapi.h"
 #include "npfunctions.h"
 
 #define PLUGIN_NAME "MuPDF Plugin"
-#define PLUGIN_VERSION "0.0.1"
+#define PLUGIN_VERSION "0.0.2"
 #define PLUGIN_DESCRIPTION "A plugin based on " \
 	"<a href=\"http://mupdf.com/\">MuPDF</a>, a lightweight PDF toolkit from " \
 	"<a href=\"http://www.artifex.com/\">Artifex Software, Inc.</a>"
 
 static NPNetscapeFuncs npn;
-static Atom XA_TARGETS;
-static Atom XA_TIMESTAMP;
-static Atom XA_UTF8_STRING;
 
 typedef struct
 {
 	NPP instance;
-	Window window;
-	Display *display;
-	Cursor xcarrow, xchand, xcwait;
-	unsigned long bgcolor, fgcolor;
-	GC gc;
-	char copylatin1[1024*16];
+	NPWindow *nav_window;
+	GtkWidget *canvas;
+	GdkDisplay *display;
+	GdkCursor *arrow, *hand, *wait;
 	char copyutf8[1024*48];
 	Time copytime;
 	int justcopied;
-	ximage_info *info;
 } pdfmoz_t;
 
 /* pdfapp callbacks */
@@ -81,22 +72,20 @@ void winclose(pdfapp_t *app)
 void wincursor(pdfapp_t *app, int cursor)
 {
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
-	Display *dpy = moz->display;
-	Window window = moz->window;
+	GdkWindow *window = moz->canvas->window;
 
 	switch (cursor)
 	{
 	case ARROW:
-		XDefineCursor(dpy, window, moz->xcarrow);
+		gdk_window_set_cursor(window, moz->arrow);
 		break;
 	case HAND:
-		XDefineCursor(dpy, window, moz->xchand);
+		gdk_window_set_cursor(window, moz->hand);
 		break;
 	case WAIT:
-		XDefineCursor(dpy, window, moz->xcwait);
+		gdk_window_set_cursor(window, moz->wait);
 		break;
 	}
-	XFlush(dpy);
 }
 
 void winresize(pdfapp_t *app, int w, int h)
@@ -120,9 +109,8 @@ static void search_status(pdfapp_t *app)
 void winrepaint(pdfapp_t *app)
 {
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
-	Display *dpy = moz->display;
-	Window window = moz->window;
-	GC gc = moz->gc;
+	GdkGC *bg_gc = moz->canvas->style->dark_gc[GTK_STATE_NORMAL],
+		*shadow_gc = moz->canvas->style->fg_gc[GTK_STATE_NORMAL];
 
 	if (!app->image)
 		return;
@@ -132,19 +120,19 @@ void winrepaint(pdfapp_t *app)
 	int x1 = app->panx + app->image->w;
 	int y1 = app->pany + app->image->h;
 
-#define fillrect(x, y, w, h) \
-	if (w > 0 && h > 0) \
-		XFillRectangle(dpy, window, gc, x, y, w, h)
+#define fillrect(gc, x, y, w, h) \
+	if ((w) > 0 && (h) > 0) \
+		gdk_draw_rectangle(moz->canvas->window, (gc), TRUE, (x), (y), (w), (h))
 
-	XSetForeground(dpy, gc, moz->bgcolor);
-	fillrect(0, 0, x0, app->winh);
-	fillrect(x1, 0, app->winw - x1, app->winh);
-	fillrect(0, 0, app->winw, y0);
-	fillrect(0, y1, app->winw, app->winh - y1);
+	/* Fill the background. */
+	fillrect(bg_gc, 0, 0, x0, app->winh);
+	fillrect(bg_gc, x1, 0, app->winw - x1, app->winh);
+	fillrect(bg_gc, 0, 0, app->winw, y0);
+	fillrect(bg_gc, 0, y1, app->winw, app->winh - y1);
 
-	XSetForeground(dpy, gc, moz->fgcolor);
-	fillrect(x0+2, y1, app->image->w, 2);
-	fillrect(x1, y0+2, 2, app->image->h);
+	/* Draw a half-border "shadow". */
+	fillrect(shadow_gc, x0+2, y1, app->image->w, 2);
+	fillrect(shadow_gc, x1, y0+2, 2, app->image->h);
 
 	if (app->iscopying || moz->justcopied)
 	{
@@ -155,37 +143,34 @@ void winrepaint(pdfapp_t *app)
 	pdfapp_inverthit(app);
 
 	if (app->image->n == 4)
-		ximage_blit(moz->info,
-					window, gc,
-					x0, y0,
-					app->image->samples,
-					0, 0,
-					app->image->w,
-					app->image->h,
-					app->image->w * app->image->n);
+		gdk_draw_rgb_32_image(moz->canvas->window,
+							  moz->canvas->style->fg_gc[GTK_STATE_NORMAL],
+							  x0, y0,
+							  app->image->w, app->image->h,
+							  GDK_RGB_DITHER_MAX,
+							  app->image->samples,
+							  app->image->w * app->image->n);
 	else if (app->image->n == 2)
 	{
 		int i = app->image->w*app->image->h;
-		unsigned char *color = malloc(i*4);
-		if (color != NULL)
+		unsigned char *gray = malloc(i);
+		if (gray)
 		{
 			unsigned char *s = app->image->samples;
-			unsigned char *d = color;
-			for (; i > 0 ; i--)
+			unsigned char *d = gray;
+			for (; i > 0; i--)
 			{
-				d[2] = d[1] = d[0] = *s++;
-				d[3] = *s++;
-				d += 4;
+				*d++ = *s++;
+				s++;
 			}
-			ximage_blit(moz->info,
-						window, gc,
-						x0, y0,
-						color,
-						0, 0,
-						app->image->w,
-						app->image->h,
-						app->image->w * 4);
-			free(color);
+			gdk_draw_gray_image(moz->canvas->window,
+								moz->canvas->style->fg_gc[GTK_STATE_NORMAL],
+								x0, y0,
+								app->image->w, app->image->h,
+								GDK_RGB_DITHER_MAX,
+								gray,
+								app->image->w);
+			free(gray);
 		}
 	}
 
@@ -204,7 +189,6 @@ void windocopy(pdfapp_t *app)
 {
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
 	unsigned short copyucs2[16 * 1024];
-	char *latin1 = moz->copylatin1;
 	char *utf8 = moz->copyutf8;
 	unsigned short *ucs2;
 	int ucs;
@@ -214,74 +198,13 @@ void windocopy(pdfapp_t *app)
 	for (ucs2 = copyucs2; ucs2[0] != 0; ucs2++)
 	{
 		ucs = ucs2[0];
-
 		utf8 += runetochar(utf8, &ucs);
-
-		if (ucs < 256)
-			*latin1++ = ucs;
-		else
-			*latin1++ = '?';
 	}
-
 	*utf8 = 0;
-	*latin1 = 0;
 
-	XSetSelectionOwner(moz->display, XA_PRIMARY, moz->window, moz->copytime);
+	gtk_selection_owner_set(moz->canvas, GDK_SELECTION_PRIMARY, moz->copytime);
 
 	moz->justcopied = 1;
-}
-
-static void onselreq(pdfapp_t *app, Window requestor, Atom selection,
-					 Atom target, Atom property, Time time)
-{
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
-	Display *dpy = moz->display;
-	XEvent nevt;
-
-	if (property == None)
-		property = target;
-
-	nevt.xselection.type = SelectionNotify;
-	nevt.xselection.send_event = True;
-	nevt.xselection.display = dpy;
-	nevt.xselection.requestor = requestor;
-	nevt.xselection.selection = selection;
-	nevt.xselection.target = target;
-	nevt.xselection.property = property;
-	nevt.xselection.time = time;
-
-	if (target == XA_TARGETS)
-	{
-		Atom atomlist[4];
-		atomlist[0] = XA_TARGETS;
-		atomlist[1] = XA_TIMESTAMP;
-		atomlist[2] = XA_STRING;
-		atomlist[3] = XA_UTF8_STRING;
-		XChangeProperty(dpy, requestor, property, target,
-			32, PropModeReplace,
-			(unsigned char *) atomlist,
-						sizeof(atomlist)/sizeof(Atom));
-	}
-	else if (target == XA_STRING)
-	{
-		XChangeProperty(dpy, requestor, property, target,
-			8, PropModeReplace,
-			(unsigned char *) moz->copylatin1,
-						strlen(moz->copylatin1));
-	}
-	else if (target == XA_UTF8_STRING)
-	{
-		XChangeProperty(dpy, requestor, property, target,
-			8, PropModeReplace,
-			(unsigned char *) moz->copyutf8,
-						strlen(moz->copyutf8));
-	}
-	else
-	{
-		nevt.xselection.property = None;
-	}
-
-	XSendEvent(dpy, requestor, False, SelectionNotify, &nevt);
 }
 
 void winreloadfile(pdfapp_t *app)
@@ -296,91 +219,95 @@ void winopenuri(pdfapp_t *app, char *buf)
 	npn.geturl(moz->instance, buf, "_blank");
 }
 
-static void
-handle_event(Widget widget, pdfapp_t *app, XEvent *event, Boolean *b)
+
+/* GTK callbacks */
+
+static gboolean
+handle_event(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 {
+	pdfapp_t *app = (pdfapp_t *) user_data;
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
-	Display *dpy = moz->display;
-	Window window = moz->window;
-	int len;
-	char buf[128];
-	KeySym keysym;
+
+	if (event->type == GDK_MAP) {
+		gtk_widget_grab_focus(widget);
+		return TRUE;
+	}
 
 	if (!app->image)
-		return;
+		return FALSE;
 
 	switch (event->type)
 	{
-	case Expose:
-		/* Ignore duplicate expose events. */
-		while (XCheckTypedWindowEvent(dpy, window, Expose, event));
+	case GDK_EXPOSE:
 		winrepaint(app);
-		break;
+		return TRUE;
 
-	case KeyPress:
+	case GDK_KEY_PRESS:
 		moz->justcopied = false;
-		len = XLookupString(&event->xkey, buf, sizeof buf, &keysym, NULL);
-
-		switch (keysym)
+		switch (event->key.keyval)
 		{
-		case XK_Escape:
-			len = 1; buf[0] = '\033';
+		case GDK_Escape:
+			pdfapp_onkey(app, '\033');
 			break;
-		case XK_Up:
-			len = 1; buf[0] = 'k';
+		case GDK_Up:
+			pdfapp_onkey(app, 'k');
 			break;
-		case XK_Down:
-			len = 1; buf[0] = 'j';
+		case GDK_Down:
+			pdfapp_onkey(app, 'j');
 			break;
-		case XK_Left:
-			len = 1; buf[0] = 'b';
+		case GDK_Left:
+			pdfapp_onkey(app, 'b');
 			break;
-		case XK_Right:
-			len = 1; buf[0] = ' ';
+		case GDK_Right:
+			pdfapp_onkey(app, ' ');
 			break;
-		case XK_Page_Up:
-			len = 1; buf[0] = ',';
+		case GDK_Page_Up:
+			pdfapp_onkey(app, ',');
 			break;
-		case XK_Page_Down:
-			len = 1; buf[0] = '.';
+		case GDK_Page_Down:
+			pdfapp_onkey(app, '.');
+			break;
+		default:
+			pdfapp_onkey(app, (int) event->key.keyval);
 			break;
 		}
-		if (len)
-			pdfapp_onkey(app, buf[0]);
 		search_status(app);
-		break;
+		return TRUE;
 
-	case MotionNotify:
-		/* Coalesce motion notifications. */
-		while (XCheckTypedWindowEvent(dpy, window, MotionNotify, event));
-		pdfapp_onmouse(app, event->xbutton.x, event->xbutton.y,
-					   event->xbutton.button, event->xbutton.state, 0);
-		break;
-
-	case ButtonPress:
+	case GDK_BUTTON_PRESS:
+		if (event->button.button == 1)
+			gtk_widget_grab_focus(widget);
 		moz->justcopied = false;
-		pdfapp_onmouse(app, event->xbutton.x, event->xbutton.y,
-					   event->xbutton.button, event->xbutton.state, 1);
-		break;
+		pdfapp_onmouse(app, (int) event->button.x, (int) event->button.y,
+					   event->button.button, event->button.state, 1);
+		return TRUE;
 
-	case ButtonRelease:
-		moz->copytime = event->xbutton.time;
-		pdfapp_onmouse(app, event->xbutton.x, event->xbutton.y,
-					   event->xbutton.button, event->xbutton.state, -1);
-		break;
+	case GDK_BUTTON_RELEASE:
+		moz->copytime = event->button.time;
+		pdfapp_onmouse(app, (int) event->button.x, (int) event->button.y,
+					   event->button.button, event->button.state, -1);
+		return TRUE;
 
-	case SelectionRequest:
-		onselreq(app,
-				 event->xselectionrequest.requestor,
-				 event->xselectionrequest.selection,
-				 event->xselectionrequest.target,
-				 event->xselectionrequest.property,
-				 event->xselectionrequest.time);
-		break;
+	case GDK_MOTION_NOTIFY:
+		pdfapp_onmouse(app, (int) event->motion.x, (int) event->motion.y,
+					   0, event->motion.state, 0);
+		gdk_event_request_motions((GdkEventMotion *) event);
+		return TRUE;
 
 	default:
-		break;
+		return FALSE;
 	}
+}
+
+static gboolean
+handle_selection(GtkWidget *widget, GtkSelectionData *selection_data,
+				 guint info, guint timestamp, gpointer user_data)
+{
+	pdfapp_t *app = (pdfapp_t *) user_data;
+	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+
+	gtk_selection_data_set_text(selection_data, moz->copyutf8, -1);
+	return TRUE;
 }
 
 /* NPAPI plugin functions */
@@ -414,15 +341,11 @@ NPP_Destroy(NPP instance, NPSavedData **saved)
 {
 	pdfapp_t *app = instance->pdata;
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
-	Display *dpy = moz->display;
 
-	ximage_free_info(moz->info);
-	moz->info = NULL;
+	gdk_cursor_unref(moz->arrow);
+	gdk_cursor_unref(moz->hand);
+	gdk_cursor_unref(moz->wait);
 
-	XFreeCursor(dpy, moz->xcarrow);
-	XFreeCursor(dpy, moz->xchand);
-	XFreeCursor(dpy, moz->xcwait);
-	XFreeGC(dpy, moz->gc);
 	fz_free(moz);
 	app->userdata = NULL;
 
@@ -433,71 +356,62 @@ NPP_Destroy(NPP instance, NPSavedData **saved)
 	return NPERR_NO_ERROR;
 }
 
-#define XWindow(npwindow) ((Window) ((npwindow)->window))
-
 NPError
-NPP_SetWindow(NPP instance, NPWindow *window)
+NPP_SetWindow(NPP instance, NPWindow *nav_window)
 {
 	pdfapp_t *app = (pdfapp_t *) instance->pdata;
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
-	NPSetWindowCallbackStruct *ws_info = (NPSetWindowCallbackStruct *)(window->ws_info);
+	NPSetWindowCallbackStruct *ws_info =
+		(NPSetWindowCallbackStruct *) nav_window->ws_info;
 
-	if (moz->window == XWindow(window)) {
-		pdfapp_onresize(app, window->width, window->height);
+	if (moz->nav_window == nav_window) {
+		pdfapp_onresize(app, nav_window->width, nav_window->height);
 		return NPERR_NO_ERROR;
 	} else {
-		Display *dpy = ws_info->display;
-		int screen = DefaultScreen(dpy);
-		Widget widget = XtWindowToWidget(dpy, XWindow(window));
+		GdkDisplay *display = gdk_x11_lookup_xdisplay(ws_info->display);
+		GtkWidget *plug = gtk_plug_new((GdkNativeWindow) nav_window->window);
+		GdkScreen *screen = gtk_window_get_screen(GTK_WINDOW(plug));
 
-		XA_TARGETS = XInternAtom(dpy, "TARGETS", False);
-		XA_TIMESTAMP = XInternAtom(dpy, "TIMESTAMP", False);
-		XA_UTF8_STRING = XInternAtom(dpy, "UTF8_STRING", False);
+		moz->display = display;
+		moz->nav_window = nav_window;
 
-		moz->display = dpy;
-		moz->window = XWindow(window);
-		moz->gc = XCreateGC(dpy, moz->window, 0, NULL);
-		moz->info = ximage_init(dpy, screen, ws_info->visual);
+		moz->canvas = gtk_drawing_area_new();
+		gtk_widget_set_can_focus(moz->canvas, TRUE);
+		gtk_selection_add_target(moz->canvas, GDK_SELECTION_PRIMARY,
+								 GDK_SELECTION_TYPE_STRING, 0);
+		gtk_widget_add_events(moz->canvas,
+							  GDK_BUTTON_PRESS_MASK |
+							  GDK_BUTTON_RELEASE_MASK |
+							  GDK_KEY_PRESS_MASK |
+							  GDK_POINTER_MOTION_MASK |
+							  GDK_POINTER_MOTION_HINT_MASK |
+							  GDK_EXPOSURE_MASK);
+		gtk_signal_connect(GTK_OBJECT(moz->canvas), "event",
+						   GTK_SIGNAL_FUNC(handle_event), app);
+		gtk_signal_connect(GTK_OBJECT(moz->canvas), "selection_get",
+						   GTK_SIGNAL_FUNC(handle_selection), app);
+		gtk_widget_show(moz->canvas);
 
-		if (moz->xcarrow != None) XFreeCursor(dpy, moz->xcarrow);
-		if (moz->xchand != None) XFreeCursor(dpy, moz->xchand);
-		if (moz->xcwait != None) XFreeCursor(dpy, moz->xcwait);
-		moz->xcarrow = XCreateFontCursor(dpy, XC_left_ptr);
-		moz->xchand = XCreateFontCursor(dpy, XC_hand2);
-		moz->xcwait = XCreateFontCursor(dpy, XC_watch);
+		gtk_container_add(GTK_CONTAINER(plug), moz->canvas);
+		gtk_widget_show(plug);
 
-		{
-			Colormap colormap = ws_info->colormap;
-			XColor bgcolor, fgcolor;
+#define maybe_unref_cursor(cursor) do { \
+			if (cursor) \
+				gdk_cursor_unref(cursor); \
+		} while (0)
 
-			bgcolor.red = 0x7000;
-			bgcolor.green = 0x7000;
-			bgcolor.blue = 0x7000;
+		maybe_unref_cursor(moz->arrow);
+		maybe_unref_cursor(moz->hand);
+		maybe_unref_cursor(moz->wait);
 
-			fgcolor.red = 0x4000;
-			fgcolor.green = 0x4000;
-			fgcolor.blue = 0x4000;
+		moz->arrow = gdk_cursor_new_for_display(display, GDK_LEFT_PTR);
+		moz->hand = gdk_cursor_new_for_display(display, GDK_HAND2);
+		moz->wait = gdk_cursor_new_for_display(display, GDK_WATCH);
 
-			XAllocColor(dpy, colormap, &bgcolor);
-			XAllocColor(dpy, colormap, &fgcolor);
-
-			moz->bgcolor = bgcolor.pixel;
-			moz->fgcolor = fgcolor.pixel;
-		}
-
-		app->winh = window->height;
-		app->winw = window->width;
-		app->resolution = (((double) DisplayWidth(dpy, screen) * 25.4) /
-						   ((double) DisplayWidthMM(dpy, screen)));
-
-		if (widget)
-		{
-			long event_mask = ExposureMask | KeyPressMask | PointerMotionMask |
-							  ButtonPressMask | ButtonReleaseMask;
-			XSelectInput(dpy, moz->window, event_mask);
-			XtAddEventHandler(widget, event_mask, False,
-							  (XtEventHandler) handle_event, app);
-		}
+		app->winh = nav_window->height;
+		app->winw = nav_window->width;
+		app->resolution = (double) gdk_screen_get_width(screen) * 25.4
+			/ (double) gdk_screen_get_width_mm(screen);
 	}
 	return NPERR_NO_ERROR;
 }

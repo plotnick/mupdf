@@ -137,10 +137,10 @@ endif
 
 MOZ_PLUGIN := $(OUT)/libmupdfplugin.so
 $(MOZ_PLUGIN) : $(MUXPS_LIB) $(MUPDF_LIB) $(FITZ_LIB) $(THIRD_LIBS)
-$(MOZ_PLUGIN): CFLAGS += $(SYS_NPAPI_CFLAGS)
+$(MOZ_PLUGIN): CFLAGS += $(SYS_NPAPI_CFLAGS) $(SYS_GTK_CFLAGS)
 ifeq "$(NOX11)" ""
 $(MOZ_PLUGIN) : $(addprefix $(OUT)/, moz_x11.o x11_image.o pdfapp.o)
-	$(LINK_CMD) -shared $(X11_LIBS)
+	$(LINK_CMD) -shared $(X11_LIBS) $(GTK_LIBS)
 endif
 
 # --- Install ---
