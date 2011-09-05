@@ -35,7 +35,7 @@ static void pdfapp_error(pdfapp_t *app, fz_error error)
 char *pdfapp_version(pdfapp_t *app)
 {
 	return
-		"MuPDF 0.8\n"
+		"MuPDF 0.9\n"
 		"Copyright 2006-2011 Artifex Sofware, Inc.\n";
 }
 
@@ -560,7 +560,7 @@ static int match(char *s, fz_text_span *span, int n)
 	return n - orig;
 }
 
-static void pdfapp_searchforward(pdfapp_t *app)
+static void pdfapp_searchforward(pdfapp_t *app, enum panning *panto)
 {
 	int matchlen;
 	int test;
@@ -588,6 +588,7 @@ static void pdfapp_searchforward(pdfapp_t *app)
 				app->hit = test;
 				app->hitlen = matchlen;
 				wincursor(app, HAND);
+				winrepaint(app);
 				return;
 			}
 			test++;
@@ -598,17 +599,22 @@ static void pdfapp_searchforward(pdfapp_t *app)
 			app->pageno = 1;
 
 		pdfapp_showpage(app, 1, 0, 0);
-		app->pany = 0;
+		*panto = PAN_TO_TOP;
 
 	} while (app->pageno != startpage);
 
 	if (app->pageno == startpage)
-		pdfapp_warn(app, "No match found: \"%s\"", app->search);
+	{
+		pdfapp_warn(app, "String '%s' not found.", app->search);
+		winrepaintsearch(app);
+	}
+	else
+		winrepaint(app);
 
 	wincursor(app, HAND);
 }
 
-static void pdfapp_searchbackward(pdfapp_t *app)
+static void pdfapp_searchbackward(pdfapp_t *app, enum panning *panto)
 {
 	int matchlen;
 	int test;
@@ -636,6 +642,7 @@ static void pdfapp_searchbackward(pdfapp_t *app)
 				app->hit = test;
 				app->hitlen = matchlen;
 				wincursor(app, HAND);
+				winrepaint(app);
 				return;
 			}
 			test--;
@@ -646,12 +653,17 @@ static void pdfapp_searchbackward(pdfapp_t *app)
 			app->pageno = app->pagecount;
 
 		pdfapp_showpage(app, 1, 0, 0);
-		app->pany = -2000;
+		*panto = PAN_TO_BOTTOM;
 
 	} while (app->pageno != startpage);
 
 	if (app->pageno == startpage)
-		pdfapp_warn(app, "No match found: \"%s\"", app->search);
+	{
+		pdfapp_warn(app, "String '%s' not found.", app->search);
+		winrepaintsearch(app);
+	}
+	else
+		winrepaint(app);
 
 	wincursor(app, HAND);
 }
@@ -679,12 +691,20 @@ void pdfapp_onkey(pdfapp_t *app, int c)
 		if (c < ' ')
 		{
 			if (c == '\b' && n > 0)
+			{
 				app->search[n - 1] = 0;
+				winrepaintsearch(app);
+			}
 			if (c == '\n' || c == '\r')
 			{
 				app->isediting = 0;
-				winrepaint(app);
-				pdfapp_onkey(app, 'n');
+				if (n > 0)
+				{
+					winrepaintsearch(app);
+					pdfapp_onkey(app, 'n');
+				}
+				else
+					winrepaint(app);
 			}
 			if (c == '\033')
 			{
@@ -698,6 +718,7 @@ void pdfapp_onkey(pdfapp_t *app, int c)
 			{
 				app->search[n] = c;
 				app->search[n + 1] = 0;
+				winrepaintsearch(app);
 			}
 		}
 		return;
@@ -806,6 +827,8 @@ void pdfapp_onkey(pdfapp_t *app, int c)
 	case '\r':
 		if (app->numberlen > 0)
 			app->pageno = atoi(app->number);
+		else
+			app->pageno = 1;
 		break;
 
 	case 'G':
@@ -908,17 +931,16 @@ void pdfapp_onkey(pdfapp_t *app, int c)
 		app->search[0] = 0;
 		app->hit = -1;
 		app->hitlen = 0;
+		winrepaintsearch(app);
 		break;
 
 	case 'n':
-		pdfapp_searchforward(app);
-		winrepaint(app);
+		pdfapp_searchforward(app, &panto);
 		loadpage = 0;
 		break;
 
 	case 'N':
-		pdfapp_searchbackward(app);
-		winrepaint(app);
+		pdfapp_searchbackward(app, &panto);
 		loadpage = 0;
 		break;
 
