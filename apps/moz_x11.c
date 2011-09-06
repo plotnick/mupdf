@@ -314,10 +314,10 @@ clear_selection(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 	pdfapp_t *app = (pdfapp_t *) user_data;
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
 
-	gtk_selection_owner_set(NULL, GDK_SELECTION_PRIMARY, moz->copytime);
-
 	moz->justcopied = 0;
 	winrepaint(app);
+
+	return gtk_selection_owner_set(NULL, GDK_SELECTION_PRIMARY, moz->copytime);
 }
 
 /* NPAPI plugin functions */
