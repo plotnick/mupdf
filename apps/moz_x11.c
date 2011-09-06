@@ -23,7 +23,6 @@ typedef struct
 	NPP instance;
 	NPWindow *nav_window;
 	GtkWidget *canvas;
-	GdkDisplay *display;
 	GdkCursor *arrow, *hand, *wait;
 	char copyutf8[1024*48];
 	Time copytime;
@@ -388,9 +387,7 @@ NPP_SetWindow(NPP instance, NPWindow *nav_window)
 		GtkWidget *plug = gtk_plug_new((GdkNativeWindow) nav_window->window);
 		GdkScreen *screen = gtk_window_get_screen(GTK_WINDOW(plug));
 
-		moz->display = display;
 		moz->nav_window = nav_window;
-
 		moz->canvas = gtk_drawing_area_new();
 		gtk_widget_set_can_focus(moz->canvas, TRUE);
 		gtk_selection_add_target(moz->canvas, GDK_SELECTION_PRIMARY,
