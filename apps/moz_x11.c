@@ -304,15 +304,26 @@ handle_event(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 	}
 }
 
-static gboolean
-handle_selection(GtkWidget *widget, GtkSelectionData *selection_data,
-				 guint info, guint timestamp, gpointer user_data)
+static void
+get_selection(GtkWidget *widget, GtkSelectionData *selection_data,
+			  guint info, guint timestamp, gpointer user_data)
 {
 	pdfapp_t *app = (pdfapp_t *) user_data;
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
 
 	gtk_selection_data_set_text(selection_data, moz->copyutf8, -1);
-	return TRUE;
+}
+
+static gboolean
+clear_selection(GtkWidget *widget, GdkEvent *event, gpointer user_data)
+{
+	pdfapp_t *app = (pdfapp_t *) user_data;
+	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+
+	gtk_selection_owner_set(NULL, GDK_SELECTION_PRIMARY, moz->copytime);
+
+	moz->justcopied = 0;
+	winrepaint(app);
 }
 
 /* NPAPI plugin functions */
@@ -393,10 +404,11 @@ NPP_SetWindow(NPP instance, NPWindow *nav_window)
 							  GDK_EXPOSURE_MASK);
 		gtk_signal_connect(GTK_OBJECT(moz->canvas), "event",
 						   GTK_SIGNAL_FUNC(handle_event), app);
-		gtk_signal_connect(GTK_OBJECT(moz->canvas), "selection_get",
-						   GTK_SIGNAL_FUNC(handle_selection), app);
+		gtk_signal_connect(GTK_OBJECT(moz->canvas), "selection-get",
+						   GTK_SIGNAL_FUNC(get_selection), app);
+		gtk_signal_connect(GTK_OBJECT(moz->canvas), "selection-clear-event",
+						   GTK_SIGNAL_FUNC(clear_selection), app);
 		gtk_widget_show(moz->canvas);
-
 		gtk_container_add(GTK_CONTAINER(plug), moz->canvas);
 		gtk_widget_show(plug);
 
