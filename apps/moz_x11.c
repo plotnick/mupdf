@@ -3,6 +3,7 @@
 #include "muxps.h"
 #include "pdfapp.h"
 
+#include <glib.h>
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
 #include <gdk/gdkkeysyms.h>
@@ -51,11 +52,20 @@ char *winpassword(pdfapp_t *app, char *filename)
 	return "";
 }
 
-void wintitle(pdfapp_t *app, char *s)
+void wintitle(pdfapp_t *app, char *title)
 {
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	char *escaped_title, *uri;
 
-	npn.status(moz->instance, s);
+	escaped_title = g_uri_escape_string(title, NULL, FALSE);
+	if (escaped_title) {
+		asprintf(&uri, "javascript:document.title='%s'", escaped_title);
+		if (uri) {
+			npn.geturl(moz->instance, uri, NULL);
+			free(uri);
+		}
+		free(escaped_title);
+	}
 }
 
 void winhelp(pdfapp_t *app)
