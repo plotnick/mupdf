@@ -60,7 +60,7 @@ void wintitle(pdfapp_t *app, char *s)
 
 void winhelp(pdfapp_t *app)
 {
-	winopenuri(app, "http://mupdf.com/");
+	winopenuri(app, "http://mupdf.com/manual");
 }
 
 void winclose(pdfapp_t *app)
