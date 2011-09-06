@@ -34,14 +34,14 @@ typedef struct
 
 void winwarn(pdfapp_t *app, char* msg)
 {
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	npn.status(moz->instance, msg);
 }
 
 void winerror(pdfapp_t *app, fz_error error)
 {
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	fz_catch(error, "unhandled error");
 	npn.status(moz->instance, "mupdf error");
@@ -54,13 +54,15 @@ char *winpassword(pdfapp_t *app, char *filename)
 
 void wintitle(pdfapp_t *app, char *title)
 {
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 	char *escaped_title, *uri;
 
 	escaped_title = g_uri_escape_string(title, NULL, FALSE);
-	if (escaped_title) {
+	if (escaped_title)
+	{
 		asprintf(&uri, "javascript:document.title='%s'", escaped_title);
-		if (uri) {
+		if (uri)
+		{
 			npn.geturl(moz->instance, uri, NULL);
 			free(uri);
 		}
@@ -80,7 +82,7 @@ void winclose(pdfapp_t *app)
 
 void wincursor(pdfapp_t *app, int cursor)
 {
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 	GdkWindow *window = moz->canvas->window;
 
 	switch (cursor)
@@ -104,7 +106,7 @@ void winresize(pdfapp_t *app, int w, int h)
 
 void winrepaint(pdfapp_t *app)
 {
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 	GdkGC *bg_gc = moz->canvas->style->dark_gc[GTK_STATE_NORMAL],
 		*shadow_gc = moz->canvas->style->fg_gc[GTK_STATE_NORMAL];
 
@@ -140,12 +142,12 @@ void winrepaint(pdfapp_t *app)
 
 	if (app->image->n == 4)
 		gdk_draw_rgb_32_image(moz->canvas->window,
-							  moz->canvas->style->fg_gc[GTK_STATE_NORMAL],
-							  x0, y0,
-							  app->image->w, app->image->h,
-							  GDK_RGB_DITHER_MAX,
-							  app->image->samples,
-							  app->image->w * app->image->n);
+			moz->canvas->style->fg_gc[GTK_STATE_NORMAL],
+			x0, y0,
+			app->image->w, app->image->h,
+			GDK_RGB_DITHER_MAX,
+			app->image->samples,
+			app->image->w * app->image->n);
 	else if (app->image->n == 2)
 	{
 		int i = app->image->w*app->image->h;
@@ -160,12 +162,12 @@ void winrepaint(pdfapp_t *app)
 				s++;
 			}
 			gdk_draw_gray_image(moz->canvas->window,
-								moz->canvas->style->fg_gc[GTK_STATE_NORMAL],
-								x0, y0,
-								app->image->w, app->image->h,
-								GDK_RGB_DITHER_MAX,
-								gray,
-								app->image->w);
+				moz->canvas->style->fg_gc[GTK_STATE_NORMAL],
+				x0, y0,
+				app->image->w, app->image->h,
+				GDK_RGB_DITHER_MAX,
+				gray,
+				app->image->w);
 			free(gray);
 		}
 	}
@@ -185,30 +187,30 @@ void winrepaintsearch(pdfapp_t *app)
 {
 	if (app->isediting)
 	{
-		pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+		pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 		char buf[sizeof(app->search) + 50];
 
 		sprintf(buf, "Search: %s", app->search);
 		gdk_draw_rectangle(moz->canvas->window,
-						   moz->canvas->style->white_gc,
-						   TRUE, 0, 0, app->winw, 30);
+			moz->canvas->style->white_gc,
+			TRUE, 0, 0, app->winw, 30);
 		windrawstring(app, 10, 20, buf);
 	}
 }
 
 void windrawstring(pdfapp_t *app, int x, int y, char *s)
 {
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	gdk_draw_string(moz->canvas->window,
-					gtk_style_get_font(moz->canvas->style),
-					moz->canvas->style->fg_gc[GTK_STATE_NORMAL],
-					x, y, s);
+		gtk_style_get_font(moz->canvas->style),
+		moz->canvas->style->fg_gc[GTK_STATE_NORMAL],
+		x, y, s);
 }
 
 void windocopy(pdfapp_t *app)
 {
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 	unsigned short copyucs2[16 * 1024];
 	char *utf8 = moz->copyutf8;
 	unsigned short *ucs2;
@@ -235,7 +237,7 @@ void winreloadfile(pdfapp_t *app)
 
 void winopenuri(pdfapp_t *app, char *buf)
 {
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	npn.geturl(moz->instance, buf, "_blank");
 }
@@ -246,7 +248,7 @@ void winopenuri(pdfapp_t *app, char *buf)
 static void
 onkey(pdfapp_t *app, int c)
 {
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	if (moz->justcopied)
 	{
@@ -260,7 +262,7 @@ onkey(pdfapp_t *app, int c)
 static void
 onmouse(pdfapp_t *app, int x, int y, int btn, int modifiers, int state)
 {
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	if (state != 0 && moz->justcopied)
 	{
@@ -274,8 +276,8 @@ onmouse(pdfapp_t *app, int x, int y, int btn, int modifiers, int state)
 static gboolean
 handle_event(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 {
-	pdfapp_t *app = (pdfapp_t *) user_data;
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfapp_t *app = (pdfapp_t *)user_data;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	if (!app->image)
 		return FALSE;
@@ -321,19 +323,19 @@ handle_event(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 		if (event->button.button == 1)
 			gtk_widget_grab_focus(widget);
 		onmouse(app, (int) event->button.x, (int) event->button.y,
-				event->button.button, event->button.state, 1);
+			event->button.button, event->button.state, 1);
 		return TRUE;
 
 	case GDK_BUTTON_RELEASE:
 		moz->copytime = event->button.time;
 		onmouse(app, (int) event->button.x, (int) event->button.y,
-				event->button.button, event->button.state, -1);
+			event->button.button, event->button.state, -1);
 		return TRUE;
 
 	case GDK_MOTION_NOTIFY:
 		onmouse(app, (int) event->motion.x, (int) event->motion.y,
-				0, event->motion.state, 0);
-		gdk_event_request_motions((GdkEventMotion *) event);
+			0, event->motion.state, 0);
+		gdk_event_request_motions((GdkEventMotion *)event);
 		return TRUE;
 
 	default:
@@ -345,8 +347,8 @@ static void
 get_selection(GtkWidget *widget, GtkSelectionData *selection_data,
 			  guint info, guint timestamp, gpointer user_data)
 {
-	pdfapp_t *app = (pdfapp_t *) user_data;
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfapp_t *app = (pdfapp_t *)user_data;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	gtk_selection_data_set_text(selection_data, moz->copyutf8, -1);
 }
@@ -354,8 +356,8 @@ get_selection(GtkWidget *widget, GtkSelectionData *selection_data,
 static gboolean
 clear_selection(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 {
-	pdfapp_t *app = (pdfapp_t *) user_data;
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfapp_t *app = (pdfapp_t *)user_data;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	moz->justcopied = 0;
 	winrepaint(app);
@@ -374,7 +376,7 @@ NPP_New(NPMIMEType mime, NPP instance, uint16_t mode,
 
 	app = fz_malloc(sizeof(pdfapp_t));
 	if (!app)
-	return NPERR_OUT_OF_MEMORY_ERROR;
+		return NPERR_OUT_OF_MEMORY_ERROR;
 	memset(app, 0, sizeof(pdfapp_t));
 	pdfapp_init(app);
 
@@ -393,7 +395,7 @@ NPError
 NPP_Destroy(NPP instance, NPSavedData **saved)
 {
 	pdfapp_t *app = instance->pdata;
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	gdk_cursor_unref(moz->arrow);
 	gdk_cursor_unref(moz->hand);
@@ -412,15 +414,18 @@ NPP_Destroy(NPP instance, NPSavedData **saved)
 NPError
 NPP_SetWindow(NPP instance, NPWindow *nav_window)
 {
-	pdfapp_t *app = (pdfapp_t *) instance->pdata;
-	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+	pdfapp_t *app = (pdfapp_t *)instance->pdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 	NPSetWindowCallbackStruct *ws_info =
-		(NPSetWindowCallbackStruct *) nav_window->ws_info;
+		(NPSetWindowCallbackStruct *)nav_window->ws_info;
 
-	if (moz->nav_window == nav_window) {
+	if (moz->nav_window == nav_window)
+	{
 		pdfapp_onresize(app, nav_window->width, nav_window->height);
 		return NPERR_NO_ERROR;
-	} else {
+	}
+	else
+	{
 		GdkDisplay *display = gdk_x11_lookup_xdisplay(ws_info->display);
 		GtkWidget *plug = gtk_plug_new((GdkNativeWindow) nav_window->window);
 		GdkScreen *screen = gtk_window_get_screen(GTK_WINDOW(plug));
@@ -429,20 +434,20 @@ NPP_SetWindow(NPP instance, NPWindow *nav_window)
 		moz->canvas = gtk_drawing_area_new();
 		gtk_widget_set_can_focus(moz->canvas, TRUE);
 		gtk_selection_add_target(moz->canvas, GDK_SELECTION_PRIMARY,
-								 GDK_SELECTION_TYPE_STRING, 0);
+			GDK_SELECTION_TYPE_STRING, 0);
 		gtk_widget_add_events(moz->canvas,
-							  GDK_BUTTON_PRESS_MASK |
-							  GDK_BUTTON_RELEASE_MASK |
-							  GDK_KEY_PRESS_MASK |
-							  GDK_POINTER_MOTION_MASK |
-							  GDK_POINTER_MOTION_HINT_MASK |
-							  GDK_EXPOSURE_MASK);
+			GDK_BUTTON_PRESS_MASK |
+			GDK_BUTTON_RELEASE_MASK |
+			GDK_KEY_PRESS_MASK |
+			GDK_POINTER_MOTION_MASK |
+			GDK_POINTER_MOTION_HINT_MASK |
+			GDK_EXPOSURE_MASK);
 		gtk_signal_connect(GTK_OBJECT(moz->canvas), "event",
-						   GTK_SIGNAL_FUNC(handle_event), app);
+			GTK_SIGNAL_FUNC(handle_event), app);
 		gtk_signal_connect(GTK_OBJECT(moz->canvas), "selection-get",
-						   GTK_SIGNAL_FUNC(get_selection), app);
+			GTK_SIGNAL_FUNC(get_selection), app);
 		gtk_signal_connect(GTK_OBJECT(moz->canvas), "selection-clear-event",
-						   GTK_SIGNAL_FUNC(clear_selection), app);
+			GTK_SIGNAL_FUNC(clear_selection), app);
 		gtk_widget_show(moz->canvas);
 		gtk_container_add(GTK_CONTAINER(plug), moz->canvas);
 		gtk_widget_show(plug);
@@ -499,14 +504,14 @@ NPP_Write(NPP instance, NPStream* stream,
 void
 NPP_StreamAsFile(NPP instance, NPStream* stream, const char* filename)
 {
-	pdfapp_t *app = (pdfapp_t *) instance->pdata;
+	pdfapp_t *app = (pdfapp_t *)instance->pdata;
 	int fd;
 
 	fd = open(filename, O_BINARY | O_RDONLY, 0666);
 	if (fd < 0)
 		winwarn(app, "cannot open file");
 	app->pageno = 1;
-	pdfapp_open(app, (char *) filename, fd, 0);
+	pdfapp_open(app, (char *)filename, fd, 0);
 }
 
 void
@@ -534,15 +539,15 @@ NPP_GetValue(NPP instance, NPPVariable variable, void *value)
 	switch (variable)
 	{
 	case NPPVpluginNameString:
-		*((char **) value) = PLUGIN_NAME;
+		*((char **)value) = PLUGIN_NAME;
 		return NPERR_NO_ERROR;
 
 	case NPPVpluginDescriptionString:
-		*((char **) value) = PLUGIN_DESCRIPTION;
+		*((char **)value) = PLUGIN_DESCRIPTION;
 		return NPERR_NO_ERROR;
 
 	case NPPVpluginNeedsXEmbed:
-		*((bool *) value) = true;
+		*((bool *)value) = true;
 		return NPERR_NO_ERROR;
 
 	default:
