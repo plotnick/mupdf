@@ -185,6 +185,11 @@ void winrepaint(pdfapp_t *app)
 	search_status(app);
 }
 
+void winrepaintsearch(pdfapp_t *app)
+{
+	winrepaint(app);
+}
+
 void windocopy(pdfapp_t *app)
 {
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
