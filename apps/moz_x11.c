@@ -493,9 +493,8 @@ NPP_SetWindow(NPP instance, NPWindow *nav_window)
 			GTK_SIGNAL_FUNC(get_selection), app);
 		gtk_signal_connect(GTK_OBJECT(moz->canvas), "selection-clear-event",
 			GTK_SIGNAL_FUNC(clear_selection), app);
-		gtk_widget_show(moz->canvas);
 		gtk_container_add(GTK_CONTAINER(plug), moz->canvas);
-		gtk_widget_show(plug);
+		gtk_widget_show_all(plug);
 
 #define maybe_unref_cursor(cursor) do { \
 			if (cursor) \
