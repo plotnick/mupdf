@@ -232,11 +232,6 @@ handle_event(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 	pdfapp_t *app = (pdfapp_t *) user_data;
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
 
-	if (event->type == GDK_MAP) {
-		gtk_widget_grab_focus(widget);
-		return TRUE;
-	}
-
 	if (!app->image)
 		return FALSE;
 
