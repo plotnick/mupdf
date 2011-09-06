@@ -102,19 +102,6 @@ void winresize(pdfapp_t *app, int w, int h)
 	/* No-op; we're not allowed to resize the browser window. */
 }
 
-static void search_status(pdfapp_t *app)
-{
-	if (app->isediting)
-	{
-		pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
-		const char *label = "Search: ";
-		char buf[sizeof(label) + strlen(app->search)];
-
-		sprintf(buf, "%s%s", label, app->search);
-		npn.status(moz->instance, buf);
-	}
-}
-
 void winrepaint(pdfapp_t *app)
 {
 	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
@@ -191,12 +178,32 @@ void winrepaint(pdfapp_t *app)
 		moz->justcopied = 1;
 	}
 
-	search_status(app);
+	winrepaintsearch(app);
 }
 
 void winrepaintsearch(pdfapp_t *app)
 {
-	winrepaint(app);
+	if (app->isediting)
+	{
+		pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+		char buf[sizeof(app->search) + 50];
+
+		sprintf(buf, "Search: %s", app->search);
+		gdk_draw_rectangle(moz->canvas->window,
+						   moz->canvas->style->white_gc,
+						   TRUE, 0, 0, app->winw, 30);
+		windrawstring(app, 10, 20, buf);
+	}
+}
+
+void windrawstring(pdfapp_t *app, int x, int y, char *s)
+{
+	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+
+	gdk_draw_string(moz->canvas->window,
+					gtk_style_get_font(moz->canvas->style),
+					moz->canvas->style->fg_gc[GTK_STATE_NORMAL],
+					x, y, s);
 }
 
 void windocopy(pdfapp_t *app)
@@ -236,6 +243,34 @@ void winopenuri(pdfapp_t *app, char *buf)
 
 /* GTK callbacks */
 
+static void
+onkey(pdfapp_t *app, int c)
+{
+	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+
+	if (moz->justcopied)
+	{
+		moz->justcopied = 0;
+		winrepaint(app);
+	}
+
+	pdfapp_onkey(app, c);
+}
+
+static void
+onmouse(pdfapp_t *app, int x, int y, int btn, int modifiers, int state)
+{
+	pdfmoz_t *moz = (pdfmoz_t *) app->userdata;
+
+	if (state != 0 && moz->justcopied)
+	{
+		moz->justcopied = 0;
+		winrepaint(app);
+	}
+
+	pdfapp_onmouse(app, x, y, btn, modifiers, state);
+}
+
 static gboolean
 handle_event(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 {
@@ -252,54 +287,52 @@ handle_event(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 		return TRUE;
 
 	case GDK_KEY_PRESS:
-		moz->justcopied = false;
-		switch (event->key.keyval)
+		if (!app->isediting)
 		{
-		case GDK_Escape:
-			pdfapp_onkey(app, '\033');
-			break;
-		case GDK_Up:
-			pdfapp_onkey(app, 'k');
-			break;
-		case GDK_Down:
-			pdfapp_onkey(app, 'j');
-			break;
-		case GDK_Left:
-			pdfapp_onkey(app, 'b');
-			break;
-		case GDK_Right:
-			pdfapp_onkey(app, ' ');
-			break;
-		case GDK_Page_Up:
-			pdfapp_onkey(app, ',');
-			break;
-		case GDK_Page_Down:
-			pdfapp_onkey(app, '.');
-			break;
-		default:
-			pdfapp_onkey(app, (int) event->key.keyval);
-			break;
+			switch (event->key.keyval)
+			{
+			case GDK_Escape:
+				onkey(app, '\033');
+				return TRUE;
+			case GDK_Up:
+				onkey(app, 'k');
+				return TRUE;
+			case GDK_Down:
+				onkey(app, 'j');
+				return TRUE;
+			case GDK_Left:
+				onkey(app, 'b');
+				return TRUE;
+			case GDK_Right:
+				onkey(app, ' ');
+				return TRUE;
+			case GDK_Page_Up:
+				onkey(app, ',');
+				return TRUE;
+			case GDK_Page_Down:
+				onkey(app, '.');
+				return TRUE;
+			}
 		}
-		search_status(app);
+		onkey(app, event->key.string[0]);
 		return TRUE;
 
 	case GDK_BUTTON_PRESS:
 		if (event->button.button == 1)
 			gtk_widget_grab_focus(widget);
-		moz->justcopied = false;
-		pdfapp_onmouse(app, (int) event->button.x, (int) event->button.y,
-					   event->button.button, event->button.state, 1);
+		onmouse(app, (int) event->button.x, (int) event->button.y,
+				event->button.button, event->button.state, 1);
 		return TRUE;
 
 	case GDK_BUTTON_RELEASE:
 		moz->copytime = event->button.time;
-		pdfapp_onmouse(app, (int) event->button.x, (int) event->button.y,
-					   event->button.button, event->button.state, -1);
+		onmouse(app, (int) event->button.x, (int) event->button.y,
+				event->button.button, event->button.state, -1);
 		return TRUE;
 
 	case GDK_MOTION_NOTIFY:
-		pdfapp_onmouse(app, (int) event->motion.x, (int) event->motion.y,
-					   0, event->motion.state, 0);
+		onmouse(app, (int) event->motion.x, (int) event->motion.y,
+				0, event->motion.state, 0);
 		gdk_event_request_motions((GdkEventMotion *) event);
 		return TRUE;
 
