@@ -289,34 +289,50 @@ handle_event(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 		return TRUE;
 
 	case GDK_KEY_PRESS:
-		if (!app->isediting)
+		if (app->isediting)
+		{
+			switch (event->key.keyval)
+			{
+			case GDK_BackSpace:
+				onkey(app, '\b');
+				break;
+			default:
+				if (event->key.length > 0)
+					onkey(app, event->key.string[0]);
+				break;
+			}
+		}
+		else
 		{
 			switch (event->key.keyval)
 			{
 			case GDK_Escape:
 				onkey(app, '\033');
-				return TRUE;
+				break;
 			case GDK_Up:
 				onkey(app, 'k');
-				return TRUE;
+				break;
 			case GDK_Down:
 				onkey(app, 'j');
-				return TRUE;
+				break;
 			case GDK_Left:
 				onkey(app, 'b');
-				return TRUE;
+				break;
 			case GDK_Right:
 				onkey(app, ' ');
-				return TRUE;
+				break;
 			case GDK_Page_Up:
 				onkey(app, ',');
-				return TRUE;
+				break;
 			case GDK_Page_Down:
 				onkey(app, '.');
-				return TRUE;
+				break;
+			default:
+				if (event->key.length > 0)
+					onkey(app, event->key.string[0]);
+				break;
 			}
 		}
-		onkey(app, event->key.string[0]);
 		return TRUE;
 
 	case GDK_BUTTON_PRESS:
