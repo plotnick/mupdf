@@ -348,6 +348,34 @@ handle_event(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 			event->button.button, event->button.state, -1);
 		return TRUE;
 
+	case GDK_SCROLL:
+		/* GDK helpfully translates button presses for buttons 4-7 into scroll
+		 * events, but pdfapp_onmouse expects raw button press data. So we'll
+		 * have to translate it back into a form that it undertands. */
+		{
+			int button;
+
+			switch (event->scroll.direction)
+			{
+			case GDK_SCROLL_LEFT:
+				event->scroll.state |= GDK_SHIFT_MASK;
+				/* fall through */
+			case GDK_SCROLL_UP:
+				button = 4;
+				break;
+
+			case GDK_SCROLL_RIGHT:
+				event->scroll.state |= GDK_SHIFT_MASK;
+				/* fall through */
+			case GDK_SCROLL_DOWN:
+				button = 5;
+				break;
+			}
+			onmouse(app, (int) event->scroll.x, (int) event->scroll.y,
+				button, event->scroll.state, 1);
+		}
+		return TRUE;
+
 	case GDK_MOTION_NOTIFY:
 		onmouse(app, (int) event->motion.x, (int) event->motion.y,
 			0, event->motion.state, 0);
@@ -457,6 +485,7 @@ NPP_SetWindow(NPP instance, NPWindow *nav_window)
 			GDK_KEY_PRESS_MASK |
 			GDK_POINTER_MOTION_MASK |
 			GDK_POINTER_MOTION_HINT_MASK |
+			GDK_SCROLL_MASK |
 			GDK_EXPOSURE_MASK);
 		gtk_signal_connect(GTK_OBJECT(moz->canvas), "event",
 			GTK_SIGNAL_FUNC(handle_event), app);
