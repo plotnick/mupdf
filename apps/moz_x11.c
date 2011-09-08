@@ -22,6 +22,7 @@ static NPNetscapeFuncs npn;
 typedef struct
 {
 	NPP instance;
+	char *src;
 	NPWindow *nav_window;
 	GtkWidget *canvas;
 	GdkCursor *arrow, *hand, *wait;
@@ -417,6 +418,7 @@ NPP_New(NPMIMEType mime, NPP instance, uint16_t mode,
 {
 	pdfapp_t *app;
 	pdfmoz_t *moz;
+	int i;
 
 	app = fz_malloc(sizeof(pdfapp_t));
 	if (!app)
@@ -429,6 +431,10 @@ NPP_New(NPMIMEType mime, NPP instance, uint16_t mode,
 		return NPERR_OUT_OF_MEMORY_ERROR;
 	memset(moz, 0, sizeof(pdfmoz_t));
 
+	for (i = 0; i < argc; i++)
+		if (strcasecmp(argn[i], "src") == 0)
+			moz->src = strdup(argv[i]);
+
 	moz->instance = instance; /* the nav-bone's connected to the moz-bone... */
 	app->userdata = moz; /* the moz-bone's connected to the app-bone... */
 	instance->pdata = app; /* the app-bone's connected to the nav-bone... */
@@ -440,6 +446,12 @@ NPP_Destroy(NPP instance, NPSavedData **saved)
 {
 	pdfapp_t *app = instance->pdata;
 	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
+
+	if (moz->src)
+	{
+		free(moz->src);
+		moz->src = NULL;
+	}
 
 	gdk_cursor_unref(moz->arrow);
 	gdk_cursor_unref(moz->hand);
@@ -549,13 +561,14 @@ void
 NPP_StreamAsFile(NPP instance, NPStream* stream, const char* filename)
 {
 	pdfapp_t *app = (pdfapp_t *)instance->pdata;
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 	int fd;
 
 	fd = open(filename, O_BINARY | O_RDONLY, 0666);
 	if (fd < 0)
 		winwarn(app, "cannot open file");
 	app->pageno = 1;
-	pdfapp_open(app, (char *)filename, fd, 0);
+	pdfapp_open(app, moz->src ? moz->src : (char *)filename, fd, 0);
 }
 
 void
