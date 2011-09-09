@@ -23,6 +23,7 @@ typedef struct
 {
 	NPP instance;
 	char *src;
+	char *filename;
 	NPWindow *nav_window;
 	GtkWidget *canvas;
 	GdkCursor *arrow, *hand, *wait;
@@ -56,19 +57,50 @@ char *winpassword(pdfapp_t *app, char *filename)
 void wintitle(pdfapp_t *app, char *title)
 {
 	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
-	char *escaped_title, *uri;
+	char *escaped_title = NULL, *uri_escaped_title = NULL, *uri = NULL;
 
-	escaped_title = g_uri_escape_string(title, NULL, FALSE);
-	if (escaped_title)
+	/* We're going to include the title as a JavaScript string literal
+	 * delimited by single-quotes, so we need to escape any single-quote
+	 * and backspace characters that appear in the raw string. */
 	{
-		asprintf(&uri, "javascript:document.title='%s'", escaped_title);
-		if (uri)
+		char *s, *d;
+
+		s = title;
+		d = escaped_title = malloc(2*strlen(title) + 1);
+		if (!escaped_title)
+			goto cleanup;
+		while (*s)
 		{
-			npn.geturl(moz->instance, uri, NULL);
-			free(uri);
+			if (*s == '\'' || *s == '\\')
+				*d++ = '\\';
+			*d++ = *s++;
 		}
-		free(escaped_title);
+		*d = 0;
 	}
+
+	/* We'll URI-encode the escaped title so that non-ASCII characters
+	 * aren't mangled. */
+	uri_escaped_title = g_uri_escape_string(escaped_title, NULL, FALSE);
+	if (!uri_escaped_title)
+		goto cleanup;
+
+	/* Opera doesn't seem to decode JavaScript URIs requested via NPN_GetURL,
+	 * so we'll use a little browser-sniffing work-around. */
+	asprintf(&uri, "javascript:document.title=%s('%s')",
+		"(window.opera ? decodeURIComponent : function(x) {return x})",
+		uri_escaped_title);
+	if (!uri)
+		goto cleanup;
+
+	npn.geturl(moz->instance, uri, NULL);
+
+cleanup:
+	if (uri)
+		free(uri);
+	if (uri_escaped_title)
+		free(uri_escaped_title);
+	if (escaped_title)
+		free(escaped_title);
 }
 
 void winhelp(pdfapp_t *app)
@@ -452,6 +484,11 @@ NPP_Destroy(NPP instance, NPSavedData **saved)
 		free(moz->src);
 		moz->src = NULL;
 	}
+	if (moz->filename)
+	{
+		free(moz->filename);
+		moz->filename = NULL;
+	}
 
 	gdk_cursor_unref(moz->arrow);
 	gdk_cursor_unref(moz->hand);
@@ -568,7 +605,14 @@ NPP_StreamAsFile(NPP instance, NPStream* stream, const char* filename)
 	if (fd < 0)
 		winwarn(app, "cannot open file");
 	app->pageno = 1;
-	pdfapp_open(app, moz->src ? moz->src : (char *)filename, fd, 0);
+
+	/* The filename we're given will usually be the name of a temporary
+	 * file, and so will probably not be particularly meaningful. If have
+	 * a suitable source URL, we'll use that instead. */
+	if (!(moz->src && (moz->filename = g_uri_unescape_segment(moz->src,
+											strrchr(moz->src, '?'), "/\\"))))
+		moz->filename = strdup(filename);
+	pdfapp_open(app, moz->filename, fd, 0);
 }
 
 void
