@@ -265,7 +265,12 @@ void windocopy(pdfapp_t *app)
 
 void winreloadfile(pdfapp_t *app)
 {
-	/* No-op; reloading should be done through the browser. */
+	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
+
+	if (moz->src)
+		npn.geturl(moz->instance, moz->src, NULL);
+	else
+		winwarn(app, "cannot reload file");
 }
 
 void winopenuri(pdfapp_t *app, char *buf)
