@@ -674,8 +674,11 @@ void pdfapp_onresize(pdfapp_t *app, int w, int h)
 	{
 		app->winw = w;
 		app->winh = h;
-		pdfapp_panview(app, app->panx, app->pany, 0);
-		winrepaint(app);
+		if (app->image)
+		{
+			pdfapp_panview(app, app->panx, app->pany, 0);
+			winrepaint(app);
+		}
 	}
 }
 
