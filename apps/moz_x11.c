@@ -61,7 +61,7 @@ void wintitle(pdfapp_t *app, char *title)
 
 	/* We're going to include the title as a JavaScript string literal
 	 * delimited by single-quotes, so we need to escape any single-quote
-	 * and backspace characters that appear in the raw string. */
+	 * and backslash characters that appear in the raw string. */
 	{
 		char *s, *d;
 
