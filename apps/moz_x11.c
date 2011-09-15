@@ -57,50 +57,29 @@ char *winpassword(pdfapp_t *app, char *filename)
 void wintitle(pdfapp_t *app, char *title)
 {
 	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
-	char *escaped_title = NULL, *uri_escaped_title = NULL, *uri = NULL;
+	NPError err;
+	NPObject *window = NULL, *document = NULL;
+	NPVariant documentv, titlev;
+	NPIdentifier document_id = npn.getstringidentifier("document"),
+		title_id = npn.getstringidentifier("title");
 
-	/* We're going to include the title as a JavaScript string literal
-	 * delimited by single-quotes, so we need to escape any single-quote
-	 * and backslash characters that appear in the raw string. */
-	{
-		char *s, *d;
+	if (!title || !document_id || !title_id)
+		return;
 
-		s = title;
-		d = escaped_title = malloc(2*strlen(title) + 1);
-		if (!escaped_title)
-			goto cleanup;
-		while (*s)
-		{
-			if (*s == '\'' || *s == '\\')
-				*d++ = '\\';
-			*d++ = *s++;
-		}
-		*d = 0;
-	}
-
-	/* We'll URI-encode the escaped title so that non-ASCII characters
-	 * aren't mangled. */
-	uri_escaped_title = g_uri_escape_string(escaped_title, NULL, FALSE);
-	if (!uri_escaped_title)
+	err = npn.getvalue(moz->instance, NPNVWindowNPObject, &window);
+	if (err != NPERR_NO_ERROR || !window)
 		goto cleanup;
-
-	/* Opera doesn't seem to decode JavaScript URIs requested via NPN_GetURL,
-	 * so we'll use a little browser-sniffing work-around. */
-	asprintf(&uri, "javascript:document.title=%s('%s')",
-		"(window.opera ? decodeURIComponent : function(x) {return x})",
-		uri_escaped_title);
-	if (!uri)
+	if (!npn.getproperty(moz->instance, window, document_id, &documentv) ||
+		!(document = NPVARIANT_TO_OBJECT(documentv)))
 		goto cleanup;
-
-	npn.geturl(moz->instance, uri, NULL);
+	STRINGZ_TO_NPVARIANT(title, titlev);
+	npn.setproperty(moz->instance, document, title_id, &titlev);
 
 cleanup:
-	if (uri)
-		free(uri);
-	if (uri_escaped_title)
-		free(uri_escaped_title);
-	if (escaped_title)
-		free(escaped_title);
+	if (document)
+		npn.releaseobject(document);
+	if (window)
+		npn.releaseobject(window);
 }
 
 void winhelp(pdfapp_t *app)
@@ -715,7 +694,7 @@ NP_Initialize(NPNetscapeFuncs *npn_funcs, NPPluginFuncs *npp_funcs)
 	return NPERR_NO_ERROR;
 }
 
-NP_EXPORT(char *)
+NP_EXPORT(const char *)
 NP_GetMIMEDescription()
 {
 	return "application/pdf:pdf:Portable Document Format;"
