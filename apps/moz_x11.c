@@ -658,14 +658,14 @@ NP_Initialize(NPNetscapeFuncs *npn_funcs, NPPluginFuncs *npp_funcs)
 	if (!npn_funcs || !npp_funcs)
 		return NPERR_INVALID_FUNCTABLE_ERROR;
 
-	/* The navigator functions table may have a size different from what
-	   we were compiled with. That's fine, as long as it contains (at least)
-	   the few functions we use. */
+	/* The navigator functions table may have a size different from what we
+	 * were compiled with. That's fine, as long as it contains (at least)
+	 * the last function we need. */
 	size = MIN(sizeof(npn), npn_funcs->size);
+	if (size < offsetof(NPNetscapeFuncs, setproperty) + sizeof(void*))
+		return NPERR_INVALID_FUNCTABLE_ERROR;
 	memcpy(&npn, npn_funcs, size);
 	npn.size = size;
-	if (!npn.geturl || !npn.status || !npn.getvalue)
-		return NPERR_INVALID_FUNCTABLE_ERROR;
 
 	/* Ensure that the browser supports XEmbed and uses Gtk2. */
 	err = npn.getvalue(NULL, NPNVSupportsXEmbedBool, &supports_xembed);
