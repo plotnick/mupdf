@@ -258,7 +258,6 @@ void winopenuri(pdfapp_t *app, char *buf)
 
 	npn.geturl(moz->instance, buf, "_blank");
 }
-
 
 /* GTK callbacks */
 
