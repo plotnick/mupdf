@@ -607,7 +607,7 @@ NPP_Print(NPP instance, NPPrint* platformPrint)
 int16_t
 NPP_HandleEvent(NPP instance, void* event)
 {
-	/* Only used on Mac. */
+	/* Only used on Mac OS for windowed plugins. */
 	return 0;
 }
 
