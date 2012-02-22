@@ -702,7 +702,9 @@ NP_EXPORT(const char *)
 NP_GetMIMEDescription()
 {
 	return "application/pdf:pdf:Portable Document Format;"
-		   "application/x-pdf:pdf:Portable Document Format";
+		   "application/x-pdf:pdf:Portable Document Format;"
+		   "application/oxps:oxps:Open XML Paper Specification;"
+		   "application/vnd.ms-xpsdocument:xps:Open XML Paper Specification";
 }
 
 NP_EXPORT(char *)
