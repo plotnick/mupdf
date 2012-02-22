@@ -115,6 +115,11 @@ void winresize(pdfapp_t *app, int w, int h)
 	/* No-op; we're not allowed to resize the browser window. */
 }
 
+void winfullscreen(pdfapp_t *app, int state)
+{
+	/* Not currently supported. */
+}
+
 void winrepaint(pdfapp_t *app)
 {
 	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
