@@ -367,7 +367,7 @@ handle_event(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 	case GDK_SCROLL:
 		/* GDK helpfully translates button presses for buttons 4-7 into scroll
 		 * events, but pdfapp_onmouse expects raw button press data. So we'll
-		 * translate such events back into a form that it undertands. */
+		 * translate such events back into a form that it understands. */
 		{
 			int button;
 
