@@ -1,29 +1,33 @@
 #include "fitz.h"
 
 fz_shade *
-fz_keep_shade(fz_shade *shade)
+fz_keep_shade(fz_context *ctx, fz_shade *shade)
 {
-	shade->refs ++;
-	return shade;
+	return (fz_shade *)fz_keep_storable(ctx, &shade->storable);
 }
 
 void
-fz_drop_shade(fz_shade *shade)
+fz_free_shade_imp(fz_context *ctx, fz_storable *shade_)
 {
-	if (shade && --shade->refs == 0)
-	{
-		if (shade->colorspace)
-			fz_drop_colorspace(shade->colorspace);
-		fz_free(shade->mesh);
-		fz_free(shade);
-	}
+	fz_shade *shade = (fz_shade *)shade_;
+
+	if (shade->colorspace)
+		fz_drop_colorspace(ctx, shade->colorspace);
+	fz_free(ctx, shade->mesh);
+	fz_free(ctx, shade);
+}
+
+void
+fz_drop_shade(fz_context *ctx, fz_shade *shade)
+{
+	fz_drop_storable(ctx, &shade->storable);
 }
 
 fz_rect
-fz_bound_shade(fz_shade *shade, fz_matrix ctm)
+fz_bound_shade(fz_context *ctx, fz_shade *shade, fz_matrix ctm)
 {
 	float *v;
-	fz_rect r;
+	fz_rect r, s;
 	fz_point p;
 	int i, ncomp, nvert;
 
@@ -32,10 +36,11 @@ fz_bound_shade(fz_shade *shade, fz_matrix ctm)
 	nvert = shade->mesh_len / ncomp;
 	v = shade->mesh;
 
+	s = fz_transform_rect(ctm, shade->bbox);
 	if (shade->type == FZ_LINEAR)
-		return fz_infinite_rect;
+		return fz_intersect_rect(s, fz_infinite_rect);
 	if (shade->type == FZ_RADIAL)
-		return fz_infinite_rect;
+		return fz_intersect_rect(s, fz_infinite_rect);
 
 	if (nvert == 0)
 		return fz_empty_rect;
@@ -59,11 +64,11 @@ fz_bound_shade(fz_shade *shade, fz_matrix ctm)
 		if (p.y > r.y1) r.y1 = p.y;
 	}
 
-	return r;
+	return fz_intersect_rect(s, r);
 }
 
 void
-fz_debug_shade(fz_shade *shade)
+fz_debug_shade(fz_context *ctx, fz_shade *shade)
 {
 	int i, j, n;
 	float *vertex;

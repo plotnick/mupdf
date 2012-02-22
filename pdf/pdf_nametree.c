@@ -2,7 +2,7 @@
 #include "mupdf.h"
 
 static fz_obj *
-pdf_lookup_name_imp(fz_obj *node, fz_obj *needle)
+pdf_lookup_name_imp(fz_context *ctx, fz_obj *node, fz_obj *needle)
 {
 	fz_obj *kids = fz_dict_gets(node, "Kids");
 	fz_obj *names = fz_dict_gets(node, "Names");
@@ -25,7 +25,15 @@ pdf_lookup_name_imp(fz_obj *node, fz_obj *needle)
 			else if (fz_objcmp(needle, last) > 0)
 				l = m + 1;
 			else
-				return pdf_lookup_name_imp(kid, needle);
+			{
+				fz_obj *obj;
+
+				if (fz_dict_mark(node))
+					break;
+				obj = pdf_lookup_name_imp(ctx, kid, needle);
+				fz_dict_unmark(node);
+				return obj;
+			}
 		}
 	}
 
@@ -49,23 +57,35 @@ pdf_lookup_name_imp(fz_obj *node, fz_obj *needle)
 			else
 				return val;
 		}
+
+		/* Spec says names should be sorted (hence the binary search,
+		 * above), but Acrobat copes with non-sorted. Drop back to a
+		 * simple search if the binary search fails. */
+		r = fz_array_len(names)/2;
+		for (l = 0; l < r; l++)
+			if (!fz_objcmp(needle, fz_array_get(names, l * 2)))
+				return fz_array_get(names, l * 2 + 1);
 	}
 
 	return NULL;
 }
 
 fz_obj *
-pdf_lookup_name(pdf_xref *xref, char *which, fz_obj *needle)
+pdf_lookup_name(pdf_document *xref, char *which, fz_obj *needle)
 {
+	fz_context *ctx = xref->ctx;
+
 	fz_obj *root = fz_dict_gets(xref->trailer, "Root");
 	fz_obj *names = fz_dict_gets(root, "Names");
 	fz_obj *tree = fz_dict_gets(names, which);
-	return pdf_lookup_name_imp(tree, needle);
+	return pdf_lookup_name_imp(ctx, tree, needle);
 }
 
 fz_obj *
-pdf_lookup_dest(pdf_xref *xref, fz_obj *needle)
+pdf_lookup_dest(pdf_document *xref, fz_obj *needle)
 {
+	fz_context *ctx = xref->ctx;
+
 	fz_obj *root = fz_dict_gets(xref->trailer, "Root");
 	fz_obj *dests = fz_dict_gets(root, "Dests");
 	fz_obj *names = fz_dict_gets(root, "Names");
@@ -84,23 +104,25 @@ pdf_lookup_dest(pdf_xref *xref, fz_obj *needle)
 	if (names && !dest)
 	{
 		fz_obj *tree = fz_dict_gets(names, "Dests");
-		return pdf_lookup_name_imp(tree, needle);
+		return pdf_lookup_name_imp(ctx, tree, needle);
 	}
 
 	return NULL;
 }
 
 static void
-pdf_load_name_tree_imp(fz_obj *dict, pdf_xref *xref, fz_obj *node)
+pdf_load_name_tree_imp(fz_obj *dict, pdf_document *xref, fz_obj *node)
 {
+	fz_context *ctx = xref->ctx;
 	fz_obj *kids = fz_dict_gets(node, "Kids");
 	fz_obj *names = fz_dict_gets(node, "Names");
 	int i;
 
-	if (kids)
+	if (kids && !fz_dict_mark(node))
 	{
 		for (i = 0; i < fz_array_len(kids); i++)
 			pdf_load_name_tree_imp(dict, xref, fz_array_get(kids, i));
+		fz_dict_unmark(node);
 	}
 
 	if (names)
@@ -111,7 +133,7 @@ pdf_load_name_tree_imp(fz_obj *dict, pdf_xref *xref, fz_obj *node)
 			fz_obj *val = fz_array_get(names, i + 1);
 			if (fz_is_string(key))
 			{
-				key = pdf_to_utf8_name(key);
+				key = pdf_to_utf8_name(ctx, key);
 				fz_dict_put(dict, key, val);
 				fz_drop_obj(key);
 			}
@@ -124,14 +146,16 @@ pdf_load_name_tree_imp(fz_obj *dict, pdf_xref *xref, fz_obj *node)
 }
 
 fz_obj *
-pdf_load_name_tree(pdf_xref *xref, char *which)
+pdf_load_name_tree(pdf_document *xref, char *which)
 {
+	fz_context *ctx = xref->ctx;
+
 	fz_obj *root = fz_dict_gets(xref->trailer, "Root");
 	fz_obj *names = fz_dict_gets(root, "Names");
 	fz_obj *tree = fz_dict_gets(names, which);
 	if (fz_is_dict(tree))
 	{
-		fz_obj *dict = fz_new_dict(100);
+		fz_obj *dict = fz_new_dict(ctx, 100);
 		pdf_load_name_tree_imp(dict, xref, tree);
 		return dict;
 	}

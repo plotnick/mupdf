@@ -12,7 +12,7 @@ typedef struct pdfapp_s pdfapp_t;
 enum { ARROW, HAND, WAIT };
 
 extern void winwarn(pdfapp_t*, char *s);
-extern void winerror(pdfapp_t*, fz_error error);
+extern void winerror(pdfapp_t*, char *s);
 extern void wintitle(pdfapp_t*, char *title);
 extern void winresize(pdfapp_t*, int w, int h);
 extern void winrepaint(pdfapp_t*);
@@ -25,17 +25,16 @@ extern void winreloadfile(pdfapp_t*);
 extern void windrawstring(pdfapp_t*, int x, int y, char *s);
 extern void winclose(pdfapp_t*);
 extern void winhelp(pdfapp_t*);
+extern void winfullscreen(pdfapp_t*, int state);
 
 struct pdfapp_s
 {
 	/* current document params */
+	fz_document *doc;
 	char *doctitle;
-	pdf_xref *xref;
-	pdf_outline *outline;
-	xps_context *xps;
+	fz_outline *outline;
 
 	int pagecount;
-	fz_glyph_cache *cache;
 
 	/* current view params */
 	int resolution;
@@ -45,11 +44,11 @@ struct pdfapp_s
 
 	/* current page params */
 	int pageno;
+	fz_page *page;
 	fz_rect page_bbox;
-	float page_rotate;
 	fz_display_list *page_list;
 	fz_text_span *page_text;
-	pdf_link *page_links;
+	fz_link *page_links;
 
 	/* snapback history */
 	int hist[256];
@@ -60,6 +59,7 @@ struct pdfapp_s
 	int winw, winh;
 	int scrw, scrh;
 	int shrinkwrap;
+	int fullscreen;
 
 	/* event handling state */
 	char number[256];
@@ -81,15 +81,18 @@ struct pdfapp_s
 
 	/* search state */
 	int isediting;
+	int searchdir;
 	char search[512];
 	int hit;
 	int hitlen;
 
 	/* client context storage */
 	void *userdata;
+
+	fz_context *ctx;
 };
 
-void pdfapp_init(pdfapp_t *app);
+void pdfapp_init(fz_context *ctx, pdfapp_t *app);
 void pdfapp_open(pdfapp_t *app, char *filename, int fd, int reload);
 void pdfapp_close(pdfapp_t *app);
 

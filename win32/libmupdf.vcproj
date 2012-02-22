@@ -41,7 +41,8 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\scripts;..\fitz;..\pdf;..\thirdparty\jbig2dec;..\thirdparty\jpeg-8c;..\thirdparty\openjpeg-1.4\libopenjpeg;..\thirdparty\zlib-1.2.5;..\thirdparty\freetype-2.4.4\include"
+				AdditionalIncludeDirectories="..\scripts;..\fitz;..\pdf;..\thirdparty\jbig2dec;..\thirdparty\jpeg-8d;..\thirdparty\openjpeg-1.4\libopenjpeg;..\thirdparty\zlib-1.2.5;..\thirdparty\freetype-2.4.8\include"
+				PreprocessorDefinitions="DEBUG=1"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
@@ -105,11 +106,73 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\scripts;..\fitz;..\pdf;..\thirdparty\jbig2dec;..\thirdparty\jpeg-8c;..\thirdparty\openjpeg-1.4\libopenjpeg;..\thirdparty\zlib-1.2.5;..\thirdparty\freetype-2.4.4\include"
+				AdditionalIncludeDirectories="..\scripts;..\fitz;..\pdf;..\thirdparty\jbig2dec;..\thirdparty\jpeg-8d;..\thirdparty\openjpeg-1.4\libopenjpeg;..\thirdparty\zlib-1.2.5;..\thirdparty\freetype-2.4.8\include"
 				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"
 				WarningLevel="3"
 				DebugInformationFormat="3"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLibrarianTool"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Memento|Win32"
+			OutputDirectory="$(ConfigurationName)"
+			IntermediateDirectory="$(ConfigurationName)\$(ProjectName)"
+			ConfigurationType="4"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+				CommandLine=""
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				AdditionalIncludeDirectories="..\scripts;..\fitz;..\pdf;..\thirdparty\jbig2dec;..\thirdparty\jpeg-8d;..\thirdparty\openjpeg-1.4\libopenjpeg;..\thirdparty\zlib-1.2.5;..\thirdparty\freetype-2.4.8\include"
+				PreprocessorDefinitions="MEMENTO=1;DEBUG=1"
+				MinimalRebuild="true"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="1"
+				WarningLevel="3"
+				DebugInformationFormat="4"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -247,10 +310,6 @@
 				>
 			</File>
 			<File
-				RelativePath="..\pdf\pdf_store.c"
-				>
-			</File>
-			<File
 				RelativePath="..\pdf\pdf_stream.c"
 				>
 			</File>
@@ -274,6 +333,10 @@
 		<Filter
 			Name="fitz"
 			>
+			<File
+				RelativePath="..\fitz\base_context.c"
+				>
+			</File>
 			<File
 				RelativePath="..\fitz\base_error.c"
 				>
@@ -343,6 +406,18 @@
 				>
 			</File>
 			<File
+				RelativePath="..\fitz\doc_document.c"
+				>
+			</File>
+			<File
+				RelativePath="..\fitz\doc_link.c"
+				>
+			</File>
+			<File
+				RelativePath="..\fitz\doc_outline.c"
+				>
+			</File>
+			<File
 				RelativePath="..\fitz\filt_basic.c"
 				>
 			</File>
@@ -363,10 +438,6 @@
 				>
 			</File>
 			<File
-				RelativePath="..\fitz\filt_jpxd.c"
-				>
-			</File>
-			<File
 				RelativePath="..\fitz\filt_lzwd.c"
 				>
 			</File>
@@ -379,7 +450,27 @@
 				>
 			</File>
 			<File
-				RelativePath="..\fitz\obj_print.c"
+				RelativePath="..\fitz\image_jpeg.c"
+				>
+			</File>
+			<File
+				RelativePath="..\fitz\image_jpx.c"
+				>
+			</File>
+			<File
+				RelativePath="..\fitz\image_png.c"
+				>
+			</File>
+			<File
+				RelativePath="..\fitz\image_tiff.c"
+				>
+			</File>
+			<File
+				RelativePath="..\fitz\memento.c"
+				>
+			</File>
+			<File
+				RelativePath="..\fitz\memento.h"
 				>
 			</File>
 			<File
@@ -411,6 +502,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\fitz\res_store.c"
+				>
+			</File>
+			<File
 				RelativePath="..\fitz\res_text.c"
 				>
 			</File>
@@ -430,10 +525,6 @@
 		<Filter
 			Name="draw"
 			>
-			<File
-				RelativePath="..\draw\arch_port.c"
-				>
-			</File>
 			<File
 				RelativePath="..\draw\draw_affine.c"
 				>
@@ -467,7 +558,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\draw\draw_scale.c"
+				RelativePath="..\draw\draw_simple_scale.c"
 				>
 			</File>
 			<File
@@ -478,6 +569,10 @@
 		<Filter
 			Name="xps"
 			>
+			<File
+				RelativePath="..\xps\muxps.h"
+				>
+			</File>
 			<File
 				RelativePath="..\xps\xps_common.c"
 				>
@@ -499,7 +594,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\xps\xps_jpeg.c"
+				RelativePath="..\xps\xps_outline.c"
 				>
 			</File>
 			<File
@@ -507,15 +602,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\xps\xps_png.c"
-				>
-			</File>
-			<File
 				RelativePath="..\xps\xps_resource.c"
-				>
-			</File>
-			<File
-				RelativePath="..\xps\xps_tiff.c"
 				>
 			</File>
 			<File
@@ -532,6 +619,18 @@
 			</File>
 			<File
 				RelativePath="..\xps\xps_zip.c"
+				>
+			</File>
+		</Filter>
+		<Filter
+			Name="cbz"
+			>
+			<File
+				RelativePath="..\cbz\mucbz.c"
+				>
+			</File>
+			<File
+				RelativePath="..\cbz\mucbz.h"
 				>
 			</File>
 		</Filter>

@@ -1,7 +1,7 @@
 #include "fitz.h"
 
 /*
-Simple hashtable with open adressing linear probe.
+Simple hashtable with open addressing linear probe.
 Unlike text book examples, removing entries works
 correctly in this implementation, so it wont start
 exhibiting bad behaviour if entries are inserted
@@ -42,56 +42,64 @@ static unsigned hash(unsigned char *s, int len)
 }
 
 fz_hash_table *
-fz_new_hash_table(int initialsize, int keylen)
+fz_new_hash_table(fz_context *ctx, int initialsize, int keylen)
 {
 	fz_hash_table *table;
 
 	assert(keylen <= MAX_KEY_LEN);
 
-	table = fz_malloc(sizeof(fz_hash_table));
+	table = fz_malloc_struct(ctx, fz_hash_table);
 	table->keylen = keylen;
 	table->size = initialsize;
 	table->load = 0;
-	table->ents = fz_calloc(table->size, sizeof(fz_hash_entry));
-	memset(table->ents, 0, sizeof(fz_hash_entry) * table->size);
+	fz_try(ctx)
+	{
+		table->ents = fz_malloc_array(ctx, table->size, sizeof(fz_hash_entry));
+		memset(table->ents, 0, sizeof(fz_hash_entry) * table->size);
+	}
+	fz_catch(ctx)
+	{
+		fz_free(ctx, table);
+		fz_rethrow(ctx);
+	}
 
 	return table;
 }
 
 void
-fz_empty_hash(fz_hash_table *table)
+fz_empty_hash(fz_context *ctx, fz_hash_table *table)
 {
 	table->load = 0;
 	memset(table->ents, 0, sizeof(fz_hash_entry) * table->size);
 }
 
 int
-fz_hash_len(fz_hash_table *table)
+fz_hash_len(fz_context *ctx, fz_hash_table *table)
 {
 	return table->size;
 }
 
 void *
-fz_hash_get_key(fz_hash_table *table, int idx)
+fz_hash_get_key(fz_context *ctx, fz_hash_table *table, int idx)
 {
 	return table->ents[idx].key;
 }
 
 void *
-fz_hash_get_val(fz_hash_table *table, int idx)
+fz_hash_get_val(fz_context *ctx, fz_hash_table *table, int idx)
 {
 	return table->ents[idx].val;
 }
 
 void
-fz_free_hash(fz_hash_table *table)
+fz_free_hash(fz_context *ctx, fz_hash_table *table)
 {
-	fz_free(table->ents);
-	fz_free(table);
+	fz_free(ctx, table->ents);
+	fz_free(ctx, table);
 }
 
 static void
-fz_resize_hash(fz_hash_table *table, int newsize)
+fz_resize_hash(fz_context *ctx, fz_hash_table *table, int newsize)
 {
 	fz_hash_entry *oldents = table->ents;
 	int oldsize = table->size;
@@ -100,11 +108,11 @@ fz_resize_hash(fz_hash_table *table, int newsize)
 
 	if (newsize < oldload * 8 / 10)
 	{
-		fz_throw("assert: resize hash too small");
+		fz_warn(ctx, "assert: resize hash too small");
 		return;
 	}
 
-	table->ents = fz_calloc(newsize, sizeof(fz_hash_entry));
+	table->ents = fz_malloc_array(ctx, newsize, sizeof(fz_hash_entry));
 	memset(table->ents, 0, sizeof(fz_hash_entry) * newsize);
 	table->size = newsize;
 	table->load = 0;
@@ -113,15 +121,15 @@ fz_resize_hash(fz_hash_table *table, int newsize)
 	{
 		if (oldents[i].val)
 		{
-			fz_hash_insert(table, oldents[i].key, oldents[i].val);
+			fz_hash_insert(ctx, table, oldents[i].key, oldents[i].val);
 		}
 	}
 
-	fz_free(oldents);
+	fz_free(ctx, oldents);
 }
 
 void *
-fz_hash_find(fz_hash_table *table, void *key)
+fz_hash_find(fz_context *ctx, fz_hash_table *table, void *key)
 {
 	fz_hash_entry *ents = table->ents;
 	unsigned size = table->size;
@@ -139,8 +147,8 @@ fz_hash_find(fz_hash_table *table, void *key)
 	}
 }
 
-void
-fz_hash_insert(fz_hash_table *table, void *key, void *val)
+void *
+fz_hash_insert(fz_context *ctx, fz_hash_table *table, void *key, void *val)
 {
 	fz_hash_entry *ents;
 	unsigned size;
@@ -148,7 +156,7 @@ fz_hash_insert(fz_hash_table *table, void *key, void *val)
 
 	if (table->load > table->size * 8 / 10)
 	{
-		fz_resize_hash(table, table->size * 2);
+		fz_resize_hash(ctx, table, table->size * 2);
 	}
 
 	ents = table->ents;
@@ -162,18 +170,21 @@ fz_hash_insert(fz_hash_table *table, void *key, void *val)
 			memcpy(ents[pos].key, key, table->keylen);
 			ents[pos].val = val;
 			table->load ++;
-			return;
+			return NULL;
 		}
 
 		if (memcmp(key, ents[pos].key, table->keylen) == 0)
-			fz_warn("assert: overwrite hash slot");
+		{
+			fz_warn(ctx, "assert: overwrite hash slot");
+			return ents[pos].val;
+		}
 
 		pos = (pos + 1) % size;
 	}
 }
 
 void
-fz_hash_remove(fz_hash_table *table, void *key)
+fz_hash_remove(fz_context *ctx, fz_hash_table *table, void *key)
 {
 	fz_hash_entry *ents = table->ents;
 	unsigned size = table->size;
@@ -184,7 +195,7 @@ fz_hash_remove(fz_hash_table *table, void *key)
 	{
 		if (!ents[pos].val)
 		{
-			fz_warn("assert: remove inexistant hash entry");
+			fz_warn(ctx, "assert: remove inexistent hash entry");
 			return;
 		}
 
@@ -220,7 +231,7 @@ fz_hash_remove(fz_hash_table *table, void *key)
 }
 
 void
-fz_debug_hash(fz_hash_table *table)
+fz_debug_hash(fz_context *ctx, fz_hash_table *table)
 {
 	int i, k;
 

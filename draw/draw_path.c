@@ -2,8 +2,6 @@
 
 #define MAX_DEPTH 8
 
-enum { BUTT = 0, ROUND = 1, SQUARE = 2, TRIANGLE = 3, MITER = 0, BEVEL = 2 };
-
 static void
 line(fz_gel *gel, fz_matrix *ctm, float x0, float y0, float x1, float y1)
 {
@@ -218,7 +216,7 @@ fz_add_line_join(struct sctx *s, fz_point a, fz_point b, fz_point c)
 {
 	float miterlimit = s->miterlimit;
 	float linewidth = s->linewidth;
-	int linejoin = s->linejoin;
+	fz_linejoin linejoin = s->linejoin;
 	float dx0, dy0;
 	float dx1, dy1;
 	float dlx0, dly0;
@@ -227,6 +225,7 @@ fz_add_line_join(struct sctx *s, fz_point a, fz_point b, fz_point c)
 	float dmr2;
 	float scale;
 	float cross;
+	float len0, len1;
 
 	dx0 = b.x - a.x;
 	dy0 = b.y - a.y;
@@ -234,75 +233,94 @@ fz_add_line_join(struct sctx *s, fz_point a, fz_point b, fz_point c)
 	dx1 = c.x - b.x;
 	dy1 = c.y - b.y;
 
-	if (dx0 * dx0 + dy0 * dy0 < FLT_EPSILON)
-		linejoin = BEVEL;
-	if (dx1 * dx1 + dy1 * dy1 < FLT_EPSILON)
-		linejoin = BEVEL;
+	cross = dx1 * dy0 - dx0 * dy1;
+	/* Ensure that cross >= 0 */
+	if (cross < 0)
+	{
+		float tmp;
+		tmp = dx1; dx1 = -dx0; dx0 = -tmp;
+		tmp = dy1; dy1 = -dy0; dy0 = -tmp;
+		cross = -cross;
+	}
 
-	scale = linewidth / sqrtf(dx0 * dx0 + dy0 * dy0);
+	len0 = dx0 * dx0 + dy0 * dy0;
+	if (len0 < FLT_EPSILON)
+		linejoin = FZ_LINEJOIN_BEVEL;
+	len1 = dx1 * dx1 + dy1 * dy1;
+	if (len1 < FLT_EPSILON)
+		linejoin = FZ_LINEJOIN_BEVEL;
+
+	scale = linewidth / sqrtf(len0);
 	dlx0 = dy0 * scale;
 	dly0 = -dx0 * scale;
 
-	scale = linewidth / sqrtf(dx1 * dx1 + dy1 * dy1);
+	scale = linewidth / sqrtf(len1);
 	dlx1 = dy1 * scale;
 	dly1 = -dx1 * scale;
-
-	cross = dx1 * dy0 - dx0 * dy1;
 
 	dmx = (dlx0 + dlx1) * 0.5f;
 	dmy = (dly0 + dly1) * 0.5f;
 	dmr2 = dmx * dmx + dmy * dmy;
 
 	if (cross * cross < FLT_EPSILON && dx0 * dx1 + dy0 * dy1 >= 0)
-		linejoin = BEVEL;
+		linejoin = FZ_LINEJOIN_BEVEL;
 
-	if (linejoin == MITER)
-		if (dmr2 * miterlimit * miterlimit < linewidth * linewidth)
-			linejoin = BEVEL;
-
-	if (linejoin == BEVEL)
+	/* XPS miter joins are clipped at miterlength, rather than simply
+	 * being converted to bevelled joins. */
+	if (linejoin == FZ_LINEJOIN_MITER_XPS)
 	{
-		fz_add_line(s, b.x - dlx0, b.y - dly0, b.x - dlx1, b.y - dly1);
-		fz_add_line(s, b.x + dlx1, b.y + dly1, b.x + dlx0, b.y + dly0);
-	}
+		if (cross == 0)
+			linejoin = FZ_LINEJOIN_BEVEL;
+		else if (dmr2 * miterlimit * miterlimit >= linewidth * linewidth)
+			linejoin = FZ_LINEJOIN_MITER;
+		else
+		{
+			float k, t0x, t0y, t1x, t1y;
+			scale = linewidth * linewidth / dmr2;
+			dmx *= scale;
+			dmy *= scale;
+			k = (scale - linewidth * miterlimit / sqrtf(dmr2)) / (scale - 1);
+			t0x = b.x - dmx + k * (dmx - dlx0);
+			t0y = b.y - dmy + k * (dmy - dly0);
+			t1x = b.x - dmx + k * (dmx - dlx1);
+			t1y = b.y - dmy + k * (dmy - dly1);
 
-	if (linejoin == MITER)
+			fz_add_line(s, b.x + dlx1, b.y + dly1, b.x + dlx0, b.y + dly0);
+			fz_add_line(s, b.x - dlx0, b.y - dly0, t0x, t0y);
+			fz_add_line(s, t0x, t0y, t1x, t1y);
+			fz_add_line(s, t1x, t1y, b.x - dlx1, b.y - dly1);
+		}
+	}
+	else if (linejoin == FZ_LINEJOIN_MITER)
+		if (dmr2 * miterlimit * miterlimit < linewidth * linewidth)
+			linejoin = FZ_LINEJOIN_BEVEL;
+
+	if (linejoin == FZ_LINEJOIN_MITER)
 	{
 		scale = linewidth * linewidth / dmr2;
 		dmx *= scale;
 		dmy *= scale;
 
-		if (cross < 0)
-		{
-			fz_add_line(s, b.x - dlx0, b.y - dly0, b.x - dlx1, b.y - dly1);
-			fz_add_line(s, b.x + dlx1, b.y + dly1, b.x + dmx, b.y + dmy);
-			fz_add_line(s, b.x + dmx, b.y + dmy, b.x + dlx0, b.y + dly0);
-		}
-		else
-		{
-			fz_add_line(s, b.x + dlx1, b.y + dly1, b.x + dlx0, b.y + dly0);
-			fz_add_line(s, b.x - dlx0, b.y - dly0, b.x - dmx, b.y - dmy);
-			fz_add_line(s, b.x - dmx, b.y - dmy, b.x - dlx1, b.y - dly1);
-		}
+		fz_add_line(s, b.x + dlx1, b.y + dly1, b.x + dlx0, b.y + dly0);
+		fz_add_line(s, b.x - dlx0, b.y - dly0, b.x - dmx, b.y - dmy);
+		fz_add_line(s, b.x - dmx, b.y - dmy, b.x - dlx1, b.y - dly1);
 	}
 
-	if (linejoin == ROUND)
+	if (linejoin == FZ_LINEJOIN_BEVEL)
 	{
-		if (cross < 0)
-		{
-			fz_add_line(s, b.x - dlx0, b.y - dly0, b.x - dlx1, b.y - dly1);
-			fz_add_arc(s, b.x, b.y, dlx1, dly1, dlx0, dly0);
-		}
-		else
-		{
-			fz_add_line(s, b.x + dlx1, b.y + dly1, b.x + dlx0, b.y + dly0);
-			fz_add_arc(s, b.x, b.y, -dlx0, -dly0, -dlx1, -dly1);
-		}
+		fz_add_line(s, b.x - dlx0, b.y - dly0, b.x - dlx1, b.y - dly1);
+		fz_add_line(s, b.x + dlx1, b.y + dly1, b.x + dlx0, b.y + dly0);
+	}
+
+	if (linejoin == FZ_LINEJOIN_ROUND)
+	{
+		fz_add_line(s, b.x + dlx1, b.y + dly1, b.x + dlx0, b.y + dly0);
+		fz_add_arc(s, b.x, b.y, -dlx0, -dly0, -dlx1, -dly1);
 	}
 }
 
 static void
-fz_add_line_cap(struct sctx *s, fz_point a, fz_point b, int linecap)
+fz_add_line_cap(struct sctx *s, fz_point a, fz_point b, fz_linecap linecap)
 {
 	float flatness = s->flatness;
 	float linewidth = s->linewidth;
@@ -314,10 +332,10 @@ fz_add_line_cap(struct sctx *s, fz_point a, fz_point b, int linecap)
 	float dlx = dy * scale;
 	float dly = -dx * scale;
 
-	if (linecap == BUTT)
+	if (linecap == FZ_LINECAP_BUTT)
 		fz_add_line(s, b.x - dlx, b.y - dly, b.x + dlx, b.y + dly);
 
-	if (linecap == ROUND)
+	if (linecap == FZ_LINECAP_ROUND)
 	{
 		int i;
 		int n = ceilf((float)M_PI / (2.0f * (float)M_SQRT2 * sqrtf(flatness / linewidth)));
@@ -337,7 +355,7 @@ fz_add_line_cap(struct sctx *s, fz_point a, fz_point b, int linecap)
 		fz_add_line(s, ox, oy, b.x + dlx, b.y + dly);
 	}
 
-	if (linecap == SQUARE)
+	if (linecap == FZ_LINECAP_SQUARE)
 	{
 		fz_add_line(s, b.x - dlx, b.y - dly,
 			b.x - dlx - dly, b.y - dly + dlx);
@@ -347,7 +365,7 @@ fz_add_line_cap(struct sctx *s, fz_point a, fz_point b, int linecap)
 			b.x + dlx, b.y + dly);
 	}
 
-	if (linecap == TRIANGLE)
+	if (linecap == FZ_LINECAP_TRIANGLE)
 	{
 		float mx = -dly;
 		float my = dlx;
@@ -382,7 +400,7 @@ fz_add_line_dot(struct sctx *s, fz_point a)
 }
 
 static void
-fz_stroke_flush(struct sctx *s, int start_cap, int end_cap)
+fz_stroke_flush(struct sctx *s, fz_linecap start_cap, fz_linecap end_cap)
 {
 	if (s->sn == 2)
 	{
@@ -413,7 +431,7 @@ fz_stroke_lineto(struct sctx *s, fz_point cur)
 
 	if (dx * dx + dy * dy < FLT_EPSILON)
 	{
-		if (s->cap == ROUND || s->dash_list)
+		if (s->cap == FZ_LINECAP_ROUND || s->dash_list)
 			s->dot = 1;
 		return;
 	}
@@ -542,10 +560,7 @@ fz_flatten_stroke_path(fz_gel *gel, fz_path *path, fz_stroke_state *stroke, fz_m
 	i = 0;
 
 	if (path->len > 0 && path->items[0].k != FZ_MOVETO)
-	{
-		fz_warn("assert: path must begin with moveto");
 		return;
-	}
 
 	p0.x = p0.y = 0;
 
@@ -589,7 +604,7 @@ fz_flatten_stroke_path(fz_gel *gel, fz_path *path, fz_stroke_state *stroke, fz_m
 }
 
 static void
-fz_dash_moveto(struct sctx *s, fz_point a, int start_cap, int end_cap)
+fz_dash_moveto(struct sctx *s, fz_point a, fz_linecap start_cap, fz_linecap end_cap)
 {
 	s->toggle = 1;
 	s->offset = 0;
@@ -726,7 +741,7 @@ fz_flatten_dash_path(fz_gel *gel, fz_path *path, fz_stroke_state *stroke, fz_mat
 {
 	struct sctx s;
 	fz_point p0, p1, p2, p3, beg;
-	float phase_len;
+	float phase_len, max_expand;
 	int i;
 
 	s.gel = gel;
@@ -750,15 +765,13 @@ fz_flatten_dash_path(fz_gel *gel, fz_path *path, fz_stroke_state *stroke, fz_mat
 	s.cap = stroke->start_cap;
 
 	if (path->len > 0 && path->items[0].k != FZ_MOVETO)
-	{
-		fz_warn("assert: path must begin with moveto");
 		return;
-	}
 
 	phase_len = 0;
 	for (i = 0; i < stroke->dash_len; i++)
 		phase_len += stroke->dash_list[i];
-	if (phase_len < 0.01f || phase_len < stroke->linewidth * 0.5f)
+	max_expand = MAX(MAX(fabs(ctm.a),fabs(ctm.b)),MAX(fabs(ctm.c),fabs(ctm.d)));
+	if (phase_len < 0.01f || phase_len * max_expand < 0.5f)
 	{
 		fz_flatten_stroke_path(gel, path, stroke, ctm, flatness, linewidth);
 		return;

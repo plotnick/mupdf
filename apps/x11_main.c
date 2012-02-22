@@ -1,6 +1,7 @@
 #include "fitz.h"
 #include "mupdf.h"
 #include "muxps.h"
+#include "mucbz.h"
 #include "pdfapp.h"
 
 #include <X11/Xlib.h>
@@ -61,11 +62,15 @@ extern void ximage_blit(Drawable d, GC gc, int dstx, int dsty,
 	unsigned char *srcdata,
 	int srcx, int srcy, int srcw, int srch, int srcstride);
 
+void windrawstringxor(pdfapp_t *app, int x, int y, char *s);
+
 static Display *xdpy;
 static Atom XA_TARGETS;
 static Atom XA_TIMESTAMP;
 static Atom XA_UTF8_STRING;
 static Atom WM_DELETE_WINDOW;
+static Atom NET_WM_STATE;
+static Atom NET_WM_STATE_FULLSCREEN;
 static int x11fd;
 static int xscr;
 static Window xwin;
@@ -90,20 +95,21 @@ static char *filename;
 static pdfapp_t gapp;
 static int closing = 0;
 static int reloading = 0;
+static int showingpage = 0;
 
 /*
  * Dialog boxes
  */
 
-void winwarn(pdfapp_t *app, char *msg)
+void winerror(pdfapp_t *app, char *msg)
 {
-	fprintf(stderr, "mupdf: %s\n", msg);
+	fprintf(stderr, "mupdf: error: %s\n", msg);
+	exit(1);
 }
 
-void winerror(pdfapp_t *app, fz_error error)
+void winwarn(pdfapp_t *app, char *msg)
 {
-	fz_catch(error, "aborting");
-	exit(1);
+	fprintf(stderr, "mupdf: warning: %s\n", msg);
 }
 
 char *winpassword(pdfapp_t *app, char *filename)
@@ -124,12 +130,14 @@ static void winopen(void)
 
 	xdpy = XOpenDisplay(NULL);
 	if (!xdpy)
-		winerror(&gapp, fz_throw("cannot open display"));
+		fz_throw(gapp.ctx, "cannot open display");
 
 	XA_TARGETS = XInternAtom(xdpy, "TARGETS", False);
 	XA_TIMESTAMP = XInternAtom(xdpy, "TIMESTAMP", False);
 	XA_UTF8_STRING = XInternAtom(xdpy, "UTF8_STRING", False);
 	WM_DELETE_WINDOW = XInternAtom(xdpy, "WM_DELETE_WINDOW", False);
+	NET_WM_STATE = XInternAtom(xdpy, "_NET_WM_STATE", False);
+	NET_WM_STATE_FULLSCREEN = XInternAtom(xdpy, "_NET_WM_STATE_FULLSCREEN", False);
 
 	xscr = DefaultScreen(xdpy);
 
@@ -151,14 +159,14 @@ static void winopen(void)
 	XAllocColor(xdpy, DefaultColormap(xdpy, xscr), &xshcolor);
 
 	xwin = XCreateWindow(xdpy, DefaultRootWindow(xdpy),
-		10, 10, 200, 100, 1,
+		10, 10, 200, 100, 0,
 		ximage_get_depth(),
 		InputOutput,
 		ximage_get_visual(),
 		0,
 		NULL);
 	if (xwin == None)
-		winerror(&gapp, fz_throw("cannot create window"));
+		fz_throw(gapp.ctx, "cannot create window");
 
 	XSetWindowColormap(xdpy, xwin, ximage_get_colormap());
 	XSelectInput(xdpy, xwin,
@@ -211,6 +219,12 @@ void winclose(pdfapp_t *app)
 	closing = 1;
 }
 
+static int winresolution()
+{
+	return DisplayWidth(xdpy, xscr) * 25.4 /
+		DisplayWidthMM(xdpy, xscr) + 0.5;
+}
+
 void wincursor(pdfapp_t *app, int curs)
 {
 	if (curs == ARROW)
@@ -240,7 +254,7 @@ void winhelp(pdfapp_t *app)
 void winresize(pdfapp_t *app, int w, int h)
 {
 	XWindowChanges values;
-	int mask;
+	int mask, width, height;
 
 	mask = CWWidth | CWHeight;
 	values.width = w;
@@ -254,6 +268,8 @@ void winresize(pdfapp_t *app, int w, int h)
 	{
 		gapp.winw = w;
 		gapp.winh = h;
+		width = -1;
+		height = -1;
 
 		XMapWindow(xdpy, xwin);
 		XFlush(xdpy);
@@ -261,6 +277,11 @@ void winresize(pdfapp_t *app, int w, int h)
 		while (1)
 		{
 			XNextEvent(xdpy, &xevt);
+			if (xevt.type == ConfigureNotify)
+			{
+				width = xevt.xconfigure.width;
+				height = xevt.xconfigure.height;
+			}
 			if (xevt.type == MapNotify)
 				break;
 		}
@@ -269,8 +290,32 @@ void winresize(pdfapp_t *app, int w, int h)
 		XFillRectangle(xdpy, xwin, xgc, 0, 0, gapp.image->w, gapp.image->h);
 		XFlush(xdpy);
 
+		if (width != reqw || height != reqh)
+		{
+			gapp.shrinkwrap = 0;
+			dirty = 1;
+			pdfapp_onresize(&gapp, width, height);
+		}
+
 		mapped = 1;
 	}
+}
+
+void winfullscreen(pdfapp_t *app, int state)
+{
+	XEvent xev;
+	xev.xclient.type = ClientMessage;
+	xev.xclient.serial = 0;
+	xev.xclient.send_event = True;
+	xev.xclient.window = xwin;
+	xev.xclient.message_type = NET_WM_STATE;
+	xev.xclient.format = 32;
+	xev.xclient.data.l[0] = state;
+	xev.xclient.data.l[1] = NET_WM_STATE_FULLSCREEN;
+	xev.xclient.data.l[2] = 0;
+	XSendEvent(xdpy, DefaultRootWindow(xdpy), False,
+		SubstructureRedirectMask | SubstructureNotifyMask,
+		&xev);
 }
 
 static void fillrect(int x, int y, int w, int h)
@@ -328,7 +373,7 @@ static void winblit(pdfapp_t *app)
 	{
 		int i = gapp.image->w*gapp.image->h;
 		unsigned char *color = malloc(i*4);
-		if (color != NULL)
+		if (color)
 		{
 			unsigned char *s = gapp.image->samples;
 			unsigned char *d = color;
@@ -358,6 +403,13 @@ static void winblit(pdfapp_t *app)
 	}
 
 	winblitsearch(app);
+
+	if (showingpage)
+	{
+		char buf[42];
+		snprintf(buf, sizeof buf, "Page %d/%d", gapp.pageno, gapp.pagecount);
+		windrawstringxor(&gapp, 10, 20, buf);
+	}
 }
 
 void winrepaint(pdfapp_t *app)
@@ -388,8 +440,6 @@ void windrawstringxor(pdfapp_t *app, int x, int y, char *s)
 	XGetGCValues(xdpy, xgc, GCFunction, &xgcv);
 	xgcv.function = prevfunction;
 	XChangeGC(xdpy, xgc, GCFunction, &xgcv);
-
-	printf("drawstring '%s'\n", s);
 }
 
 void windrawstring(pdfapp_t *app, int x, int y, char *s)
@@ -485,9 +535,9 @@ void winreloadfile(pdfapp_t *app)
 
 	pdfapp_close(app);
 
-	fd = open(filename, O_BINARY | O_RDONLY, 0666);
+	fd = open(filename, O_RDONLY, 0666);
 	if (fd < 0)
-		winerror(app, fz_throw("cannot reload file '%s'", filename));
+		fz_throw(gapp.ctx, "cannot reload file '%s'", filename);
 
 	pdfapp_open(app, filename, fd, 1);
 }
@@ -496,7 +546,13 @@ void winopenuri(pdfapp_t *app, char *buf)
 {
 	char *browser = getenv("BROWSER");
 	if (!browser)
+	{
+#ifdef __APPLE__
 		browser = "open";
+#else
+		browser = "xdg-open";
+#endif
+	}
 	if (fork() == 0)
 		execlp(browser, browser, buf, (char*)0);
 }
@@ -507,6 +563,13 @@ static void onkey(int c)
 	{
 		justcopied = 0;
 		winrepaint(&gapp);
+	}
+
+	if (!gapp.isediting && c == 'P')
+	{
+		showingpage = 1;
+		winrepaint(&gapp);
+		return;
 	}
 
 	pdfapp_onkey(&gapp, c);
@@ -535,7 +598,6 @@ static void usage(void)
 	fprintf(stderr, "\t-b -\tset anti-aliasing quality in bits (0=off, 8=best)\n");
 	fprintf(stderr, "\t-p -\tpassword\n");
 	fprintf(stderr, "\t-r -\tresolution\n");
-	fprintf(stderr, "\t-A\tdisable accelerated functions\n");
 	exit(1);
 }
 
@@ -547,30 +609,35 @@ int main(int argc, char **argv)
 	KeySym keysym;
 	int oldx = 0;
 	int oldy = 0;
-	int resolution = 72;
+	int resolution = -1;
 	int pageno = 1;
-	int accelerate = 1;
 	int fd;
 	fd_set fds;
 	int width = -1;
 	int height = -1;
+	fz_context *ctx;
+	struct timeval tmo_at;
+	struct timeval now;
+	struct timeval tmo;
+	struct timeval *timeout;
 
-	while ((c = fz_getopt(argc, argv, "p:r:b:A")) != -1)
+	ctx = fz_new_context(NULL, NULL, FZ_STORE_DEFAULT);
+	if (!ctx)
+	{
+		fprintf(stderr, "cannot initialise context\n");
+		exit(1);
+	}
+
+	while ((c = fz_getopt(argc, argv, "p:r:b:")) != -1)
 	{
 		switch (c)
 		{
 		case 'p': password = fz_optarg; break;
 		case 'r': resolution = atoi(fz_optarg); break;
-		case 'A': accelerate = 0; break;
-		case 'b': fz_set_aa_level(atoi(fz_optarg)); break;
+		case 'b': fz_set_aa_level(ctx, atoi(fz_optarg)); break;
 		default: usage();
 		}
 	}
-
-	if (resolution < MINRES)
-		resolution = MINRES;
-	if (resolution > MAXRES)
-		resolution = MAXRES;
 
 	if (argc - fz_optind == 0)
 		usage();
@@ -580,31 +647,37 @@ int main(int argc, char **argv)
 	if (argc - fz_optind == 1)
 		pageno = atoi(argv[fz_optind++]);
 
-	if (accelerate)
-		fz_accelerate();
-
 	winopen();
 
-	pdfapp_init(&gapp);
+	pdfapp_init(ctx, &gapp);
+	if (resolution == -1)
+		resolution = winresolution();
+	if (resolution < MINRES)
+		resolution = MINRES;
+	if (resolution > MAXRES)
+		resolution = MAXRES;
+
 	gapp.scrw = DisplayWidth(xdpy, xscr);
 	gapp.scrh = DisplayHeight(xdpy, xscr);
 	gapp.resolution = resolution;
 	gapp.pageno = pageno;
 
-	fd = open(filename, O_BINARY | O_RDONLY, 0666);
+	fd = open(filename, O_RDONLY, 0666);
 	if (fd < 0)
-		winerror(&gapp, fz_throw("cannot open file '%s'", filename));
+		fz_throw(gapp.ctx, "cannot open file '%s'", filename);
 
 	pdfapp_open(&gapp, filename, fd, 0);
 
 	FD_ZERO(&fds);
-	FD_SET(x11fd, &fds);
 
 	signal(SIGHUP, signal_handler);
 
+	tmo_at.tv_sec = 0;
+	tmo_at.tv_usec = 0;
+
 	while (!closing)
 	{
-		do
+		while (!closing && XPending(xdpy))
 		{
 			XNextEvent(xdpy, &xevt);
 
@@ -693,7 +766,6 @@ int main(int argc, char **argv)
 				break;
 			}
 		}
-		while (!closing && XPending(xdpy));
 
 		if (closing)
 			continue;
@@ -715,16 +787,52 @@ int main(int argc, char **argv)
 			dirtysearch = 0;
 		}
 
+		if (showingpage && !tmo_at.tv_sec && !tmo_at.tv_usec)
+		{
+			tmo.tv_sec = 2;
+			tmo.tv_usec = 0;
+
+			gettimeofday(&now, NULL);
+			timeradd(&now, &tmo, &tmo_at);
+		}
+
 		if (XPending(xdpy))
 			continue;
 
-		if (select(x11fd + 1, &fds, NULL, NULL, NULL) < 0)
+		timeout = NULL;
+
+		if (tmo_at.tv_sec || tmo_at.tv_usec)
+		{
+			gettimeofday(&now, NULL);
+			timersub(&tmo_at, &now, &tmo);
+			if (tmo.tv_sec <= 0)
+			{
+				tmo_at.tv_sec = 0;
+				tmo_at.tv_usec = 0;
+				timeout = NULL;
+				showingpage = 0;
+				winrepaint(&gapp);
+			}
+			else
+				timeout = &tmo;
+		}
+
+		FD_SET(x11fd, &fds);
+		if (select(x11fd + 1, &fds, NULL, NULL, timeout) < 0)
 		{
 			if (reloading)
 			{
 				winreloadfile(&gapp);
 				reloading = 0;
 			}
+		}
+		if (!FD_ISSET(x11fd, &fds))
+		{
+			tmo_at.tv_sec = 0;
+			tmo_at.tv_usec = 0;
+			timeout = NULL;
+			showingpage = 0;
+			winrepaint(&gapp);
 		}
 	}
 
@@ -741,6 +849,8 @@ int main(int argc, char **argv)
 	XFreeGC(xdpy, xgc);
 
 	XCloseDisplay(xdpy);
+
+	fz_free_context(ctx);
 
 	return 0;
 }

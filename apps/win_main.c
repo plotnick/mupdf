@@ -1,6 +1,7 @@
 #include "fitz.h"
 #include "mupdf.h"
 #include "muxps.h"
+#include "mucbz.h"
 #include "pdfapp.h"
 
 #ifndef UNICODE
@@ -19,7 +20,6 @@
 #endif
 
 #define ID_ABOUT	0x1000
-#define ID_DOCINFO	0x1001
 
 static HWND hwndframe = NULL;
 static HWND hwndview = NULL;
@@ -37,6 +37,7 @@ static pdfapp_t gapp;
 
 static wchar_t wbuf[1024];
 static char filename[1024];
+static fz_context *context;
 
 /*
  * Create registry keys to associate MuPDF with PDF and XPS files.
@@ -92,37 +93,10 @@ void winwarn(pdfapp_t *app, char *msg)
 	MessageBoxA(hwndframe, msg, "MuPDF: Warning", MB_ICONWARNING);
 }
 
-void winerror(pdfapp_t *app, fz_error error)
+void winerror(pdfapp_t *app, char *msg)
 {
-	char msgbuf[160 * 30];
-	int i;
-
-	/* TODO: redirect stderr to a log file and display here */
-	fz_catch(error, "displaying error message to user");
-
-	fz_strlcpy(msgbuf, "An error has occurred.\n\n", sizeof msgbuf);
-	for (i = 0; i < fz_get_error_count(); i++)
-	{
-		fz_strlcat(msgbuf, fz_get_error_line(i), sizeof msgbuf);
-		fz_strlcat(msgbuf, "\n", sizeof msgbuf);
-	}
-
-	MessageBoxA(hwndframe, msgbuf, "MuPDF: Error", MB_ICONERROR);
+	MessageBoxA(hwndframe, msg, "MuPDF: Error", MB_ICONERROR);
 	exit(1);
-}
-
-void win32error(char *msg)
-{
-	LPSTR buf;
-	int code = GetLastError();
-	FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-		FORMAT_MESSAGE_FROM_SYSTEM |
-		FORMAT_MESSAGE_IGNORE_INSERTS,
-		NULL,
-		code,
-		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-		(LPSTR)&buf, 0, NULL);
-	winerror(&gapp, fz_throw("%s:\n%s", msg, buf));
 }
 
 int winfilename(wchar_t *buf, int len)
@@ -136,7 +110,7 @@ int winfilename(wchar_t *buf, int len)
 	ofn.nMaxFile = len;
 	ofn.lpstrInitialDir = NULL;
 	ofn.lpstrTitle = L"MuPDF: Open PDF file";
-	ofn.lpstrFilter = L"Documents (*.pdf;*.xps)\0*.xps;*.pdf\0PDF Files (*.pdf)\0*.pdf\0XPS Files (*.xps)\0*.xps\0All Files\0*\0\0";
+	ofn.lpstrFilter = L"Documents (*.pdf;*.xps;*.cbz;*.zip)\0*.zip;*.cbz;*.xps;*.pdf\0PDF Files (*.pdf)\0*.pdf\0XPS Files (*.xps)\0*.xps\0CBZ Files (*.cbz;*.zip)\0*.zip;*.cbz\0All Files\0*\0\0";
 	ofn.Flags = OFN_FILEMUSTEXIST|OFN_HIDEREADONLY;
 	return GetOpenFileNameW(&ofn);
 }
@@ -184,104 +158,10 @@ char *winpassword(pdfapp_t *app, char *filename)
 	sprintf(pd_filename, "The file \"%s\" is encrypted.", s);
 	code = DialogBoxW(NULL, L"IDD_DLOGPASS", hwndframe, dlogpassproc);
 	if (code <= 0)
-		win32error("cannot create password dialog");
+		winerror(app, "cannot create password dialog");
 	if (pd_okay)
 		return pd_password;
 	return NULL;
-}
-
-INT CALLBACK
-dloginfoproc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-	char buf[256];
-	pdf_xref *xref = gapp.xref;
-	fz_obj *info, *obj;
-
-	switch(message)
-	{
-	case WM_INITDIALOG:
-
-		SetDlgItemTextW(hwnd, 0x10, wbuf);
-
-		if (!xref)
-		{
-			SetDlgItemTextA(hwnd, 0x11, "XPS");
-			SetDlgItemTextA(hwnd, 0x12, "None");
-			SetDlgItemTextA(hwnd, 0x13, "n/a");
-			return TRUE;
-		}
-
-		sprintf(buf, "PDF %d.%d", xref->version / 10, xref->version % 10);
-		SetDlgItemTextA(hwnd, 0x11, buf);
-
-		if (xref->crypt)
-		{
-			sprintf(buf, "Standard V%d %d-bit %s", pdf_get_crypt_revision(xref),
-				pdf_get_crypt_length(xref), pdf_get_crypt_method(xref));
-			SetDlgItemTextA(hwnd, 0x12, buf);
-			strcpy(buf, "");
-			if (pdf_has_permission(xref, PDF_PERM_PRINT))
-				strcat(buf, "print, ");
-			if (pdf_has_permission(xref, PDF_PERM_CHANGE))
-				strcat(buf, "modify, ");
-			if (pdf_has_permission(xref, PDF_PERM_COPY))
-				strcat(buf, "copy, ");
-			if (pdf_has_permission(xref, PDF_PERM_NOTES))
-				strcat(buf, "annotate, ");
-			if (strlen(buf) > 2)
-				buf[strlen(buf)-2] = 0;
-			else
-				strcpy(buf, "none");
-			SetDlgItemTextA(hwnd, 0x13, buf);
-		}
-		else
-		{
-			SetDlgItemTextA(hwnd, 0x12, "None");
-			SetDlgItemTextA(hwnd, 0x13, "n/a");
-		}
-
-		info = fz_dict_gets(xref->trailer, "Info");
-		if (!info)
-			return TRUE;
-
-#define SETUCS(ID) \
-		{ \
-			unsigned short *ucs; \
-			ucs = pdf_to_ucs2(obj); \
-			SetDlgItemTextW(hwnd, ID, ucs); \
-			fz_free(ucs); \
-		}
-
-		if ((obj = fz_dict_gets(info, "Title")))
-			SETUCS(0x20);
-		if ((obj = fz_dict_gets(info, "Author")))
-			SETUCS(0x21);
-		if ((obj = fz_dict_gets(info, "Subject")))
-			SETUCS(0x22);
-		if ((obj = fz_dict_gets(info, "Keywords")))
-			SETUCS(0x23);
-		if ((obj = fz_dict_gets(info, "Creator")))
-			SETUCS(0x24);
-		if ((obj = fz_dict_gets(info, "Producer")))
-			SETUCS(0x25);
-		if ((obj = fz_dict_gets(info, "CreationDate")))
-			SETUCS(0x26);
-		if ((obj = fz_dict_gets(info, "ModDate")))
-			SETUCS(0x27);
-		return TRUE;
-
-	case WM_COMMAND:
-		EndDialog(hwnd, 1);
-		return TRUE;
-	}
-	return FALSE;
-}
-
-void info()
-{
-	int code = DialogBoxW(NULL, L"IDD_DLOGINFO", hwndframe, dloginfoproc);
-	if (code <= 0)
-		win32error("cannot create info dialog");
 }
 
 INT CALLBACK
@@ -304,7 +184,7 @@ void winhelp(pdfapp_t*app)
 {
 	int code = DialogBoxW(NULL, L"IDD_DLOGABOUT", hwndframe, dlogaboutproc);
 	if (code <= 0)
-		win32error("cannot create help dialog");
+		winerror(&gapp, "cannot create help dialog");
 }
 
 /*
@@ -332,7 +212,7 @@ void winopen()
 	wc.lpszClassName = L"FrameWindow";
 	a = RegisterClassW(&wc);
 	if (!a)
-		win32error("cannot register frame window class");
+		winerror(&gapp, "cannot register frame window class");
 
 	/* Create and register window view class */
 	memset(&wc, 0, sizeof(wc));
@@ -348,7 +228,7 @@ void winopen()
 	wc.lpszClassName = L"ViewWindow";
 	a = RegisterClassW(&wc);
 	if (!a)
-		win32error("cannot register view window class");
+		winerror(&gapp, "cannot register view window class");
 
 	/* Get screen size */
 	SystemParametersInfo(SPI_GETWORKAREA, 0, &r, 0);
@@ -366,7 +246,7 @@ void winopen()
 
 	/* Init DIB info for buffer */
 	dibinf = malloc(sizeof(BITMAPINFO) + 12);
-	assert(dibinf != NULL);
+	assert(dibinf);
 	dibinf->bmiHeader.biSize = sizeof(dibinf->bmiHeader);
 	dibinf->bmiHeader.biPlanes = 1;
 	dibinf->bmiHeader.biBitCount = 32;
@@ -389,7 +269,7 @@ void winopen()
 	0, // program instance handle
 	0); // creation parameters
 	if (!hwndframe)
-		win32error("cannot create frame: %s");
+		winerror(&gapp, "cannot create frame");
 
 	hwndview = CreateWindowW(L"ViewWindow", // window class name
 	NULL,
@@ -398,7 +278,7 @@ void winopen()
 	CW_USEDEFAULT, CW_USEDEFAULT,
 	hwndframe, 0, 0, 0);
 	if (!hwndview)
-		win32error("cannot create view: %s");
+		winerror(&gapp, "cannot create view");
 
 	hdc = NULL;
 
@@ -407,7 +287,6 @@ void winopen()
 	menu = GetSystemMenu(hwndframe, 0);
 	AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
 	AppendMenuW(menu, MF_STRING, ID_ABOUT, L"About MuPDF...");
-	AppendMenuW(menu, MF_STRING, ID_DOCINFO, L"Document Properties...");
 
 	SetCursor(arrowcurs);
 }
@@ -579,6 +458,27 @@ void winrepaintsearch(pdfapp_t *app)
 	InvalidateRect(hwndview, NULL, 0);
 }
 
+void winfullscreen(pdfapp_t *app, int state)
+{
+	static WINDOWPLACEMENT savedplace;
+	static int isfullscreen = 0;
+	if (state && !isfullscreen)
+	{
+		GetWindowPlacement(hwndframe, &savedplace);
+		SetWindowLong(hwndframe, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+		SetWindowPos(hwndframe, NULL, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
+		ShowWindow(hwndframe, SW_SHOWMAXIMIZED);
+		isfullscreen = 1;
+	}
+	if (!state && isfullscreen)
+	{
+		SetWindowLong(hwndframe, GWL_STYLE, WS_OVERLAPPEDWINDOW);
+		SetWindowPos(hwndframe, NULL, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
+		SetWindowPlacement(hwndframe, &savedplace);
+		isfullscreen = 0;
+	}
+}
+
 /*
  * Event handling
  */
@@ -617,7 +517,7 @@ void winreloadfile(pdfapp_t *app)
 
 	fd = _wopen(wbuf, O_BINARY | O_RDONLY, 0666);
 	if (fd < 0)
-		winerror(&gapp, fz_throw("cannot reload file '%s'", filename));
+		winerror(&gapp, "cannot reload file");
 
 	pdfapp_open(app, filename, fd, 1);
 }
@@ -638,7 +538,7 @@ void handlekey(int c)
 		winrepaint(&gapp);
 	}
 
-	/* translate VK into ascii equivalents */
+	/* translate VK into ASCII equivalents */
 	if (c > 256)
 	{
 		switch (c - 256)
@@ -694,11 +594,6 @@ frameproc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (wParam == ID_ABOUT)
 		{
 			winhelp(&gapp);
-			return 0;
-		}
-		if (wParam == ID_DOCINFO)
-		{
-			info();
 			return 0;
 		}
 		if (wParam == SC_MAXIMIZE)
@@ -853,10 +748,15 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShow
 	MSG msg;
 	int fd;
 	int code;
+	fz_context *ctx;
 
-	fz_accelerate();
-
-	pdfapp_init(&gapp);
+	ctx = fz_new_context(NULL, NULL, FZ_STORE_DEFAULT);
+	if (!ctx)
+	{
+		fprintf(stderr, "cannot initialise context\n");
+		exit(1);
+	}
+	pdfapp_init(ctx, &gapp);
 
 	GetModuleFileNameA(NULL, argv0, sizeof argv0);
 	install_app(argv0);
@@ -875,11 +775,11 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShow
 
 	fd = _wopen(wbuf, O_BINARY | O_RDONLY, 0666);
 	if (fd < 0)
-		winerror(&gapp, fz_throw("cannot open file '%s'", filename));
+		winerror(&gapp, "cannot open file");
 
 	code = WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, filename, sizeof filename, NULL, NULL);
 	if (code == 0)
-		win32error("cannot convert filename to utf-8");
+		winerror(&gapp, "cannot convert filename to utf-8");
 
 	pdfapp_open(&gapp, filename, fd, 0);
 
