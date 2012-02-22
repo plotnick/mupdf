@@ -41,12 +41,11 @@ void winwarn(pdfapp_t *app, char* msg)
 	npn.status(moz->instance, msg);
 }
 
-void winerror(pdfapp_t *app, fz_error error)
+void winerror(pdfapp_t *app, char* msg)
 {
 	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
-	fz_catch(error, "unhandled error");
-	npn.status(moz->instance, "mupdf error");
+	npn.status(moz->instance, msg);
 }
 
 char *winpassword(pdfapp_t *app, char *filename)
@@ -431,17 +430,21 @@ NPError
 NPP_New(NPMIMEType mime, NPP instance, uint16_t mode,
 	int16_t argc, char *argn[], char *argv[], NPSavedData *saved)
 {
+	fz_context *ctx;
 	pdfapp_t *app;
 	pdfmoz_t *moz;
 	int i;
 
-	app = fz_malloc(sizeof(pdfapp_t));
+	ctx = fz_new_context(NULL, NULL, FZ_STORE_DEFAULT);
+	if (!ctx)
+		return NPERR_GENERIC_ERROR;
+	
+	app = malloc(sizeof(pdfapp_t));
 	if (!app)
 		return NPERR_OUT_OF_MEMORY_ERROR;
-	memset(app, 0, sizeof(pdfapp_t));
-	pdfapp_init(app);
+	pdfapp_init(ctx, app);
 
-	moz = fz_malloc(sizeof(pdfmoz_t));
+	moz = malloc(sizeof(pdfmoz_t));
 	if (!moz)
 		return NPERR_OUT_OF_MEMORY_ERROR;
 	memset(moz, 0, sizeof(pdfmoz_t));
@@ -460,6 +463,7 @@ NPError
 NPP_Destroy(NPP instance, NPSavedData **saved)
 {
 	pdfapp_t *app = instance->pdata;
+	fz_context *ctx = app->ctx;
 	pdfmoz_t *moz = (pdfmoz_t *)app->userdata;
 
 	if (moz->src)
@@ -477,11 +481,12 @@ NPP_Destroy(NPP instance, NPSavedData **saved)
 	gdk_cursor_unref(moz->hand);
 	gdk_cursor_unref(moz->wait);
 
-	fz_free(moz);
+	free(moz);
 	app->userdata = NULL;
 
 	pdfapp_close(app);
-	fz_free(app);
+	free(app);
+	fz_free_context(ctx);
 	instance->pdata = NULL;
 
 	return NPERR_NO_ERROR;
